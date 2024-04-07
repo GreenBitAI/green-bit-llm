@@ -1,0 +1,12 @@
+name: gbai_cuda_lm
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.9
+  - pip=24.0
+  - pytorch::pytorch>=2.0
+  - pip:
+      - sentencepiece
+      - huggingface_hub
+      - transformers>=4.38.0
