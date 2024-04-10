@@ -80,11 +80,11 @@ def get_packed_info(channels, n_bits, bits_prop, bits_group_size):
     """
     Calculate the distribution of channels into groups and rows based on their bit properties.
 
-    Parameters:
-        - channels (int): Total number of channels to be packed.
-        - n_bits (list of int): Number of bits per channel for each group.
-        - bits_prop (list of float): Proportion of channels to be allocated to each bit type.
-        - bits_group_size (dict): Mapping of group index to the minimal number of channels in a group.
+    Args:
+        channels (int): Total number of channels to be packed.
+        n_bits (list of int): Number of bits per channel for each group.
+        bits_prop (list of float): Proportion of channels to be allocated to each bit type.
+        bits_group_size (dict): Mapping of group index to the minimal number of channels in a group.
 
     Returns:
         Tuple[int, int]: A tuple containing the total number of groups and rows needed.
@@ -115,14 +115,14 @@ def find_layers(module: nn.Module, layers=[nn.Conv2d, nn.Linear], name=''):
     (or module) that match the specified types.
 
     Args:
-        - module (nn.Module): The model or module to search within.
-        - layers (list): A list of layer classes (e.g., nn.Conv2d, nn.Linear) to look for within the model.
+        module (nn.Module): The model or module to search within.
+        layers (list): A list of layer classes (e.g., nn.Conv2d, nn.Linear) to look for within the model.
                          Default is [nn.Conv2d, nn.Linear].
-        - name (str): The namespace (hierarchical path) leading to the current module being searched.
+        name (str): The namespace (hierarchical path) leading to the current module being searched.
                       This is used internally for recursive calls to build the full path names of layers.
 
     Returns:
-        - dict: A dictionary where each key is the hierarchical name of the layer (showing its path within
+        dict: A dictionary where each key is the hierarchical name of the layer (showing its path within
                 the model) and each value is the corresponding layer module itself.
     """
     if type(module) in layers:
@@ -173,12 +173,12 @@ def apply_dtype_to(model: nn.Module, dtype: torch.dtype):
     parts of the model may benefit from different precision levels for efficiency
     and speed.
 
-    Parameters:
-        - model: The PyTorch model to modify.
-        - dtype: The target data type to apply to the model. Supported types are
+    Args:
+        model: The PyTorch model to modify.
+        dtype: The target data type to apply to the model. Supported types are
                  torch.float, torch.half, and torch.bfloat16.
     Returns:
-        - None. The model is modified in-place.
+        None. The model is modified in-place.
     """
 
     # Check if the specified dtype is torch.half, and if so, convert the model to half precision.
