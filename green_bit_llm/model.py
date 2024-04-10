@@ -8,7 +8,7 @@ import torch.nn as nn
 from transformers import PreTrainedTokenizer, AutoTokenizer, AutoConfig, AutoModelForCausalLM, PreTrainedModel, logging
 import accelerate
 
-from utils import get_layer_mode_from_name, LayerMode, get_packed_info, get_model_path, find_layers, apply_dtype_to
+from .utils import get_layer_mode_from_name, LayerMode, get_packed_info, get_model_path, find_layers, apply_dtype_to
 
 import time
 from transformers import logging
@@ -19,7 +19,6 @@ ENGINE_AVAILABLE = True
 try:
     from bitorch_engine.layers.qlinear.nbit import MPQLinearBase
     from bitorch_engine.layers.qlinear.nbit.cuda import MPQLinearCuda, MBWQLinearCuda
-    from bitorch_engine.layers.qlinear.nbit.mps import MPQLinearMlx
 except ModuleNotFoundError as e:
     ENGINE_AVAILABLE = False
     print(f"Error: Module not found: {e}.")
@@ -40,7 +39,7 @@ def engine_layer_prepare(model: torch.nn.Module):
         if issubclass(type(m), MPQLinearBase):
             m.prepare_params()
             if target_layer_name == '': target_layer_name = m.__class__.__name__
-    print(Style.BRIGHT + Fore.GREEN + '{} parameter preparation finished.'.format(target_layer_name))
+    print(Style.BRIGHT + Fore.CYAN + 'Info: {} parameter preparation finished.'.format(target_layer_name))
 
 
 def apply_quant_strategy(name_attr, quant_strategy):
@@ -129,6 +128,8 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
     Returns:
         Tuple[nn.Module, AutoConfig]: A tuple containing the loaded and initialized model and its configuration.
     """
+    logging.set_verbosity_error()
+
     start_time = time.time()
     print(Style.BRIGHT + Fore.CYAN + "Info: Loading Model ...")
 
@@ -157,6 +158,8 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
             make_quant(layer, layers_to_quantize, layer_mode=layer_mode, group_size=group_size, bits=bits, dtype=dtype,
                        quant_strategy=strategy_per_block)
 
+    # model.tie_weights()
+    # print(model)
     # Load checkpoint, dispatch model, and apply post-initialization configurations
     model = accelerate.load_checkpoint_and_dispatch(model=model, checkpoint=model_path, device_map=device_map,
                                                     no_split_module_classes=["LlamaDecoderLayer"])
@@ -164,9 +167,9 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
     engine_layer_prepare(model)  # Assuming this prepares the model's engine layers post-initialization
     apply_dtype_to(model, dtype)  # Assuming this function applies the dtype to all model parameters
 
-    print(Style.BRIGHT + Fore.GREEN + f"Info: Apply dtype: {dtype} to the model.")
-    print(Style.BRIGHT + Fore.YELLOW + f'Total {torch.cuda.memory_allocated() / 1024**3:.2f} GiB VRAM used.')
-    print(Style.BRIGHT + Fore.GREEN + f"Info: Loaded the model in {time.time() - start_time:.2f} seconds.")
+    print(Style.BRIGHT + Fore.CYAN + f"Info: Apply dtype: {dtype} to the model.")
+    print(Style.BRIGHT + Fore.CYAN + f'Info: Total {torch.cuda.memory_allocated() / 1024**3:.2f} GiB VRAM used.')
+    print(Style.BRIGHT + Fore.CYAN + f"Info: Loaded the model in {time.time() - start_time:.2f} seconds.")
 
     return model, config
 
@@ -231,7 +234,7 @@ def generate(
     max_tokens: int = 100,
     verbose: bool = False,
     top_p: float = 0.95,
-    repetition_penalty: float = 1.5,
+    repetition_penalty: Optional[float] = 1.5,
     top_k: int = 20,
     output_scores: bool = False,
     return_dict_in_generate: bool = True,
@@ -263,48 +266,67 @@ def generate(
     model = model.to(device)
     model.eval()
 
-    # Encode the prompt text to tensor
-    input_ids = tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=False).to(device)
-
-    # Generation settings
-    eos_token_id = tokenizer.eos_token_id
-    prompt_length = len(input_ids[0])
-
+    generate_string = []
     if verbose:
-        logging.set_verbosity_info()
         print("=" * 50)
         print(f"Prompt: {prompt}")
-        start_time = time.time()
-    else:
-        logging.set_verbosity_error()
+        tic = time.perf_counter()
 
-    output_sequences = model.generate(
-        input_ids=input_ids,
-        temperature=temp,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-        eos_token_id=eos_token_id,
-        pad_token_id=eos_token_id,
-        use_cache=True,
-        max_new_tokens=max_tokens,
-        top_k=top_k,
-        output_scores=output_scores,
-        return_dict_in_generate=return_dict_in_generate,
-        output_attentions=output_attentions,
-        output_hidden_states=output_hidden_states
-    )
+    # Encode the prompt text to tensor
+    input_ids = tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=True).to(device)
+
+    # Generation settings
+    prompt_length = len(input_ids[0])
+
+    with torch.no_grad():
+        # prompt time
+        output_sequences = model.generate(
+            input_ids=input_ids,
+            temperature=temp,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
+            use_cache=True,
+            do_sample=True,
+            max_new_tokens=1,
+            top_k=top_k,
+            output_scores=output_scores,
+            return_dict_in_generate=return_dict_in_generate,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states
+        )
+
+        if verbose:
+            prompt_duration = time.perf_counter() - tic
+            print(f"generating ... ")
+            tic = time.perf_counter()
+
+        # Update input_ids for next iteration
+        input_ids = output_sequences['sequences']
+
+        output_sequences = model.generate(
+            input_ids=input_ids,
+            temperature=temp,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
+            use_cache=True,
+            do_sample=True,
+            max_new_tokens=max_tokens,
+            top_k=top_k,
+            output_scores=output_scores,
+            return_dict_in_generate=return_dict_in_generate,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states
+        )
 
     # Decode generated sequence
-    generated_sequence = tokenizer.decode(output_sequences[0], clean_up_tokenization_spaces=True)
-
-    # Remove the prompt at the beginning of the sequence
-    generated_sequence = generated_sequence[len(tokenizer.decode(input_ids[0], clean_up_tokenization_spaces=True)):]
+    generated_sequence = tokenizer.decode(output_sequences['sequences'].tolist()[0], clean_up_tokenization_spaces=True)
 
     if verbose:
-        end_time = time.time()
-        duration = end_time - start_time
-        tokens_per_second = (prompt_length + max_tokens) / duration
+        gen_duration = time.perf_counter() - tic
+        prompt_tps = prompt_length / prompt_duration
+        gen_tps = max_tokens / gen_duration
         print(f"Generated text: {generated_sequence}")
-        print(f"Duration: {duration:.2f}s, Tokens per second: {tokens_per_second:.2f}")
+        print(f"prompt: {prompt_tps:.2f} token/s")
+        print(f"generation: {gen_tps:.2f} token/s")
 
     return generated_sequence
