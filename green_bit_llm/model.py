@@ -9,6 +9,7 @@ from transformers import PreTrainedTokenizer, AutoTokenizer, AutoConfig, AutoMod
 import accelerate
 
 from .utils import get_layer_mode_from_name, LayerMode, get_packed_info, get_model_path, find_layers, apply_dtype_to
+from .enum import LayerMode, TextGenMode
 
 import time
 from transformers import logging
@@ -79,6 +80,8 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
         bits: The number of bits to use for weight quantization.
         dtype: The data type to be used for the quantized weights.
         quant_strategy: A dictionary defining specific quantization strategies for different layers.
+        model_type: This attribute information has been read from config.json. E.g. "qwen2" for Qwen-model
+        requires_grad (bool): Set if the model requires gradient. It can be set to True for training.
 
     This function modifies the module in-place by replacing specified layers with their quantized counterparts.
     It supports different quantization modes and strategies, allowing fine-grained control over the quantization process.
@@ -138,6 +141,8 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
         dtype (torch.dtype): Data type for model tensors.
         device_map (set): Devices to distribute the model.
         seqlen (int): Sequence length for the model.
+        model_config (str, optional): Model configurations for "AutoModelForCausalLM.from_pretrained".
+        requires_grad (bool): Set if the model requires gradient. It can be set to True for training.
 
     Returns:
         Tuple[nn.Module, AutoConfig]: A tuple containing the loaded and initialized model and its configuration.
@@ -207,8 +212,8 @@ def load(
         dtype (torch.dtype): Data type to be used.
         device_map (set): Device map defines how to distribute model on the GPUs.
         seqlen (int): Sequence length.
-        adapter_file (str, optional): Path to the adapter file. If provided, applies LoRA layers to the model.
-                                      Defaults to None.
+        model_config (str, optional): Model configurations for "AutoModelForCausalLM.from_pretrained".
+        requires_grad (bool): Set if the model requires gradient. It can be set to True for training.
 
     Returns:
         Tuple[nn.Module, PreTrainedTokenizer, AutoConfig]: A tuple containing the loaded model and tokenizer.
@@ -239,6 +244,7 @@ def generate(
     max_tokens: int = 100,
     verbose: bool = False,
     top_p: float = 0.95,
+    gen_mode: TextGenMode = TextGenMode.SEQUENCE,
     repetition_penalty: Optional[float] = 1.5,
     top_k: int = 20,
     output_scores: bool = False,
@@ -257,6 +263,7 @@ def generate(
         max_tokens (int): The maximum number of tokens to generate.
         verbose (bool): If True, additional information such as generation speed will be printed.
         top_p (float): The nucleus (top-p) sampling probability threshold for filtering tokens.
+        top_p (TextGenMode): Indicates if generate text sequence or token by token generation.
         repetition_penalty (float): The penalty for token repetition. Values >1 discourage repetition.
         top_k (int): The top-k sampling value. Limits generation to the top k probable tokens.
         output_scores (bool): Whether to return the generation scores.
@@ -271,7 +278,6 @@ def generate(
     model = model.to(device)
     model.eval()
 
-    generate_string = []
     if verbose:
         print("=" * 50)
         print(f"Prompt: {prompt}")
@@ -310,34 +316,65 @@ def generate(
         # Update input_ids for next iteration
         input_ids = output_sequences['sequences']
 
-        output_sequences = model.generate(
-            input_ids=input_ids,
-            temperature=temp,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-            use_cache=True,
-            do_sample=True,
-            max_new_tokens=max_tokens,
-            top_k=top_k,
-            output_scores=output_scores,
-            return_dict_in_generate=return_dict_in_generate,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id
-        )
+        if gen_mode == TextGenMode.SEQUENCE:
+            output_sequences = model.generate(
+                input_ids=input_ids,
+                temperature=temp,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty,
+                use_cache=True,
+                do_sample=True,
+                max_new_tokens=max_tokens,
+                top_k=top_k,
+                output_scores=output_scores,
+                return_dict_in_generate=return_dict_in_generate,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id
+            )
+            # Decode generated sequence
+            generated_sequence = tokenizer.decode(output_sequences['sequences'].tolist()[0], clean_up_tokenization_spaces=True)
+            # Remove the prompt at the beginning of the sequence
+            generated_sequence = generated_sequence[len(tokenizer.decode(input_ids[0], clean_up_tokenization_spaces=True)):]
 
-    # Decode generated sequence
-    generated_sequence = tokenizer.decode(output_sequences['sequences'].tolist()[0], clean_up_tokenization_spaces=True)
+            if verbose:
+                print(f"Generated text: {generated_sequence}")
 
-    # Remove the prompt at the beginning of the sequence
-    generated_sequence = generated_sequence[len(tokenizer.decode(input_ids[0], clean_up_tokenization_spaces=True)):]
+        elif gen_mode == TextGenMode.TOKEN:
+            generated_tokens = []
+            for _ in range(max_tokens):
+                output_sequences = model.generate(
+                    input_ids=input_ids,
+                    temperature=temp,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                    use_cache=True,
+                    do_sample=True,
+                    max_new_tokens=1,  # Generate one token at a time
+                    top_k=top_k,
+                    output_scores=output_scores,
+                    return_dict_in_generate=return_dict_in_generate,
+                    output_attentions=output_attentions,
+                    output_hidden_states=output_hidden_states,
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id
+                )
+                # Decode generated token
+                s = tokenizer.decode(output_sequences['sequences'].tolist()[0][-1],
+                                                   clean_up_tokenization_spaces=True)
+                generated_tokens.append(s)
+                input_ids = output_sequences['sequences']  # Update input_ids for next iteration
+
+                # Print the generated token
+                if verbose:
+                    print(s + ' ', end='', flush=True)
+            generated_sequence = "".join(generated_tokens)
 
     if verbose:
         gen_duration = time.perf_counter() - tic
         prompt_tps = prompt_length / prompt_duration
         gen_tps = max_tokens / gen_duration
-        print(f"Generated text: {generated_sequence}")
         print(f"prompt: {prompt_tps:.2f} token/s")
         print(f"generation: {gen_tps:.2f} token/s")
 
