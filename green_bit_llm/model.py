@@ -13,8 +13,6 @@ from .utils import get_layer_mode_from_name, LayerMode, get_packed_info, get_mod
 import time
 from transformers import logging
 
-STRATEGY_FILE_NAME = "quant_strategy.json"
-
 ENGINE_AVAILABLE = True
 try:
     from bitorch_engine.layers.qlinear.nbit import MPQLinearBase
@@ -25,6 +23,9 @@ except ModuleNotFoundError as e:
 
 from colorama import init, Fore, Style
 init(autoreset=True)
+
+STRATEGY_FILE_NAME = "quant_strategy.json"
+MODEL_TYPE_QWEN2 = "qwen2"
 
 
 def engine_layer_prepare(model: torch.nn.Module):
@@ -42,7 +43,7 @@ def engine_layer_prepare(model: torch.nn.Module):
     print(Style.BRIGHT + Fore.CYAN + 'Info: {} parameter preparation finished.'.format(target_layer_name))
 
 
-def apply_quant_strategy(name_attr, quant_strategy):
+def apply_quant_strategy(name_attr: str, quant_strategy: Dict):
     """
     Apply quantization strategy based on the layer's name and the provided strategy.
     """
@@ -54,8 +55,18 @@ def apply_quant_strategy(name_attr, quant_strategy):
     return strategy
 
 
+def get_disable_bias(name_attr: str, model_type) -> bool:
+    """
+    Usually the linear layer of llm disables bias. The three components 'q_proj', 'k_proj', and 'v_proj' in the qwen2 model attention module are exceptions.
+    """
+    for key in ['q_proj', 'k_proj', 'v_proj']:
+        if key in name_attr and model_type == MODEL_TYPE_QWEN2:
+            return False
+    return True
+
+
 def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Optional[int] = None, bits: Optional[int] = None,
-               dtype: torch.dtype = torch.half, quant_strategy=None):
+               dtype: torch.dtype = torch.half, quant_strategy = None, model_type = None, requires_grad: bool = False):
     """
     Applies quantization to the specified layers of a PyTorch module according to the provided quantization strategy.
 
@@ -85,10 +96,13 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
                 bits = strategy["bits"][0]
                 group_size = strategy["group_size"][str(bits)]
 
+            disable_bias = get_disable_bias(name_attr, model_type)
+
             common_params = {
                 "in_channels": tmp.in_features, "out_channels": tmp.out_features,
                 "w_bit": bits, "dtype": dtype, "group_size": group_size, "dq_group_size": 32,
-                "use_gba_quant": True, "asym": False, "dq_mode": 2, "requires_grad": True
+                "use_gba_quant": True, "asym": False, "dq_mode": 2, "requires_grad": requires_grad,
+                "disable_bias": disable_bias
             }
 
             if layer_mode == LayerMode.LEGENCY:
@@ -104,12 +118,12 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
 
     for name_attr, child in module.named_children():
         name_sub = f'{name}.{name_attr}' if name else name_attr
-        make_quant(child, names, layer_mode, name_sub, group_size, bits, dtype, quant_strategy)
+        make_quant(child, names, layer_mode, name_sub, group_size, bits, dtype, quant_strategy, model_type, requires_grad)
 
 
 def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = None, group_size: Optional[int] = None,
                dtype: torch.dtype = torch.half, device_map: set = {"cuda:0"}, seqlen: int = 2048,
-               model_config: Dict = {}) -> Tuple[nn.Module, AutoConfig]:
+               model_config: Dict = {}, requires_grad: bool = False) -> Tuple[nn.Module, AutoConfig]:
     """
     Load and initialize a model from the given path with options for quantization and device distribution.
 
@@ -156,7 +170,7 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
             strategy_per_block = strategy.get(f"model.layers.{i}") if strategy else None
 
             make_quant(layer, layers_to_quantize, layer_mode=layer_mode, group_size=group_size, bits=bits, dtype=dtype,
-                       quant_strategy=strategy_per_block)
+                       quant_strategy=strategy_per_block, model_type=config.model_type, requires_grad=requires_grad)
 
     # model.tie_weights()
     # print(model)
@@ -181,6 +195,7 @@ def load(
     device_map: set = {"cuda:0"},
     seqlen: int = 2048,
     model_config: Dict = {},
+    requires_grad: bool = False
 ) -> Tuple[nn.Module, PreTrainedTokenizer]:
     """
     Load the model and tokenizer from a given path or a huggingface repository.
@@ -209,21 +224,11 @@ def load(
     layer_mode, bits, group_size = get_layer_mode_from_name(path_or_hf_repo)
     model_path = get_model_path(path_or_hf_repo)
 
-    model, config = load_model(model_path, layer_mode, bits, group_size, dtype, device_map, seqlen, model_config)
+    model, config = load_model(model_path, layer_mode, bits, group_size, dtype, device_map, seqlen, model_config, requires_grad)
 
     tokenizer = AutoTokenizer.from_pretrained(path_or_hf_repo, **tokenizer_config)
 
     return model, tokenizer, config
-
-    generate(
-        model,
-        tokenizer,
-        prompt,
-        args.temp,
-        args.max_tokens,
-        True,
-        top_p=args.top_p,
-    )
 
 
 def generate(
@@ -292,7 +297,9 @@ def generate(
             output_scores=output_scores,
             return_dict_in_generate=return_dict_in_generate,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states
+            output_hidden_states=output_hidden_states,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id
         )
 
         if verbose:
@@ -315,11 +322,16 @@ def generate(
             output_scores=output_scores,
             return_dict_in_generate=return_dict_in_generate,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states
+            output_hidden_states=output_hidden_states,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id
         )
 
     # Decode generated sequence
     generated_sequence = tokenizer.decode(output_sequences['sequences'].tolist()[0], clean_up_tokenization_spaces=True)
+
+    # Remove the prompt at the beginning of the sequence
+    generated_sequence = generated_sequence[len(tokenizer.decode(input_ids[0], clean_up_tokenization_spaces=True)):]
 
     if verbose:
         gen_duration = time.perf_counter() - tic
