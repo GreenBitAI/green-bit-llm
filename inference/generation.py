@@ -116,6 +116,7 @@ def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: 
         args.max_tokens,
         True,
         top_p=args.top_p,
+        stepgen_mode=
     )
 
 
@@ -137,7 +138,8 @@ def main(args):
         dtype=DTYPE,
         device_map='auto',
         seqlen=args.seqlen,
-        model_config=pretrain_model_config
+        model_config=pretrain_model_config,
+        requires_grad=False
     )
 
     if args.use_default_chat_template:
