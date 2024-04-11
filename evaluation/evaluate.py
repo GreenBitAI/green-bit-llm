@@ -175,7 +175,7 @@ def setup_arg_parser():
     parser.add_argument(
         "--ppl-tasks",
         type=str,
-        default="c4_new, ptb",
+        default="wikitext2, c4_new, ptb",
         help="Specify ppl evaluation task",
     )
     parser.add_argument(
