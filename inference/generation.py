@@ -17,6 +17,7 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 from green_bit_llm.model import load, generate
+from green_bit_llm.enum import TextGenMode
 
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-0.5B-layer-mix-bpw-2.2"
@@ -87,6 +88,11 @@ def setup_arg_parser():
         action="store_true",
         help="Use the default chat template",
     )
+    parser.add_argument(
+        "--gen-token-by-token",
+        action="store_true",
+        help="Generate token by token, otherwise generate the whole sequence.",
+    )
     return parser
 
 
@@ -116,7 +122,7 @@ def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: 
         args.max_tokens,
         True,
         top_p=args.top_p,
-        stepgen_mode=
+        gen_mode=TextGenMode.TOKEN if args.gen_token_by_token else TextGenMode.SEQUENCE
     )
 
 
