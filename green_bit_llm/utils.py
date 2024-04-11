@@ -1,17 +1,11 @@
 from pathlib import Path
-from enum import Enum
 import re
 import torch.nn as nn
 import torch
 
 from huggingface_hub import snapshot_download
 
-
-class LayerMode(Enum):
-    LAYER_MIX = 1
-    CHANNEL_MIX = 2
-    LEGENCY = 3
-
+from .enum import LayerMode
 
 def check_engine_available()-> bool:
     """
