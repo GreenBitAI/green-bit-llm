@@ -375,7 +375,7 @@ def generate(
         gen_duration = time.perf_counter() - tic
         prompt_tps = prompt_length / prompt_duration
         gen_tps = max_tokens / gen_duration
-        print(f"prompt: {prompt_tps:.2f} token/s")
+        print(f"\nprompt: {prompt_tps:.2f} token/s")
         print(f"generation: {gen_tps:.2f} token/s")
 
     return generated_sequence
