@@ -1,5 +1,6 @@
 import argparse
 import sys
+import os
 
 import torch
 import torch.nn as nn
@@ -38,11 +39,12 @@ def setup_arg_parser():
         default=DEFAULT_MODEL_PATH,
         help="The path to the local model directory or Hugging Face repo.",
     )
+    parser.add_argument("--num-gpus", type=int, default=1)
     parser.add_argument(
-        "--cuda-device-id",
+        "--gpus",
         type=str,
-        default="0",
-        help="CUDA device IDs",
+        default='0',
+        help="A single GPU like 1 or multiple GPUs like 0,2",
     )
     parser.add_argument(
         "--trust-remote-code",
@@ -88,11 +90,6 @@ def setup_arg_parser():
         action="store_true",
         help="Use the default chat template",
     )
-    parser.add_argument(
-        "--gen-token-by-token",
-        action="store_true",
-        help="Generate token by token, otherwise generate the whole sequence.",
-    )
     return parser
 
 
@@ -121,12 +118,22 @@ def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: 
         args.temp,
         args.max_tokens,
         True,
-        top_p=args.top_p,
-        gen_mode=TextGenMode.TOKEN if args.gen_token_by_token else TextGenMode.SEQUENCE
+        top_p=args.top_p
     )
 
 
 def main(args):
+
+    if args.gpus:
+        if len(args.gpus.split(",")) < args.num_gpus:
+            raise ValueError(
+                f"Larger --num-gpus ({args.num_gpus}) than --gpus {args.gpus}!"
+            )
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpus
+
+    if not torch.cuda.is_available():
+        print("Warning: CUDA is needed to run the model.")
+        sys.exit(0)
 
     # Building configs
     tokenizer_config = {"trust_remote_code": True if args.trust_remote_code else None}
@@ -163,10 +170,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    if not torch.cuda.is_available():
-        print("Warning: CUDA is needed to run the model.")
-        sys.exit(0)
-
     parser = setup_arg_parser()
     args = parser.parse_args()
 
