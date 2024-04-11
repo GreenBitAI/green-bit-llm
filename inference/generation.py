@@ -4,7 +4,17 @@ import sys
 import torch
 import torch.nn as nn
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules.module')
+
 from transformers import PreTrainedTokenizer
+
+from pathlib import Path
+
+# Add the parent directory to sys.path
+parent_dir = str(Path(__file__).parent.parent)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
 
 from green_bit_llm.model import load, generate
 
@@ -46,7 +56,7 @@ def setup_arg_parser():
     parser.add_argument(
         "--eos-token",
         type=str,
-        default="<|im_end|>",
+        default=None,
         help="End of sequence token for tokenizer",
     )
     parser.add_argument(
@@ -81,10 +91,9 @@ def setup_arg_parser():
 
 
 def create_device_map(cuda_device_id):
-    ids = cuda_device_id.split(',')
-    # Create strings in the format "cuda:x" for each ID and put them into the collection
-    device_map = {f"cuda:{id}" for id in ids}
-    return device_map
+    # TODO: create device map strategy
+    #return device_map
+    raise NotImplementedError('device map strategy not implemented yet!')
 
 
 def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: str):
@@ -116,16 +125,19 @@ def main(args):
     tokenizer_config = {"trust_remote_code": True if args.trust_remote_code else None}
     pretrain_model_config = {
         "trust_remote_code": True if args.trust_remote_code else None,
-        "use_flash_attention_2": True if args.use_flash_attention_2 else None
+        "attn_implementation": "flash_attention_2" if args.use_flash_attention_2 else None
     }
 
     if args.eos_token is not None:
         tokenizer_config["eos_token"] = args.eos_token
 
     model, tokenizer, config = load(
-        args.model, tokenizer_config=tokenizer_config, dtype=DTYPE,
-        device_map=create_device_map(args.cuda_device_id),
-        seqlen=args.seqlen, model_config=pretrain_model_config
+        args.model,
+        tokenizer_config=tokenizer_config,
+        dtype=DTYPE,
+        device_map='auto',
+        seqlen=args.seqlen,
+        model_config=pretrain_model_config
     )
 
     if args.use_default_chat_template:
