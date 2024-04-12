@@ -1,1 +1,1 @@
-from .model import load
+from .model import load, generate
