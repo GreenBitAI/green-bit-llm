@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 import json
+import sys
 
 import torch
 import torch.nn as nn
@@ -8,8 +9,13 @@ import torch.nn as nn
 from transformers import PreTrainedTokenizer, AutoTokenizer, AutoConfig, AutoModelForCausalLM, PreTrainedModel, logging
 import accelerate
 
-from .utils import get_layer_mode_from_name, LayerMode, get_packed_info, get_model_path, find_layers, apply_dtype_to
-from .enum import LayerMode, TextGenMode
+# Add the parent directory to sys.path
+parent_dir = str(Path(__file__).parent.parent)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from green_bit_llm.utils import get_layer_mode_from_name, LayerMode, get_packed_info, get_model_path, find_layers, apply_dtype_to
+from green_bit_llm.enum import LayerMode, TextGenMode
 
 import time
 from transformers import logging
