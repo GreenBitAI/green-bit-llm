@@ -100,7 +100,7 @@ def str_to_torch_dtype(dtype: str):
     elif dtype == "float32":
         return torch.float32
     elif dtype == "float16":
-        return torch.float16
+        return torch.half
     elif dtype == "bfloat16":
         return torch.bfloat16
     else:

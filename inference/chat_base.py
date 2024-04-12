@@ -2,7 +2,7 @@
 Base classes and functions for cli chat demo.
 Code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/serve/inference.py
 """
-
+import re
 import gc
 import sys
 import abc
@@ -12,16 +12,25 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, Iterable
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
+
+import torch
+
 # Add the parent directory to sys.path
 parent_dir = str(Path(__file__).parent.parent)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 from green_bit_llm import load
-from .conversation import get_conv_template
-from .utils import is_partial_stop, is_sentence_complete, get_context_length, prepare_logits_processor, get_conversation_template
-
-import torch
+from conversation import get_conv_template
+from utils import is_partial_stop, is_sentence_complete, get_context_length, prepare_logits_processor, get_conversation_template
 
 
 class ChatIO(abc.ABC):
@@ -40,6 +49,118 @@ class ChatIO(abc.ABC):
     @abc.abstractmethod
     def print_output(self, text: str):
         """Print output."""
+
+
+class SimpleChatIO(ChatIO):
+    def __init__(self, multiline: bool = False):
+        self._multiline = multiline
+
+    def prompt_for_input(self, role) -> str:
+        if not self._multiline:
+            return input(f"{role}: ")
+
+        prompt_data = []
+        line = input(f"{role} [ctrl-d/z on empty line to end]: ")
+        while True:
+            prompt_data.append(line.strip())
+            try:
+                line = input()
+            except EOFError as e:
+                break
+        return "\n".join(prompt_data)
+
+    def prompt_for_output(self, role: str):
+        print(f"{role}: ", end="", flush=True)
+
+    def stream_output(self, output_stream):
+        pre = 0
+        for outputs in output_stream:
+            output_text = outputs["text"]
+            output_text = output_text.strip().split(" ")
+            now = len(output_text) - 1
+            if now > pre:
+                print(" ".join(output_text[pre:now]), end=" ", flush=True)
+                pre = now
+        print(" ".join(output_text[pre:]), flush=True)
+        return " ".join(output_text)
+
+    def print_output(self, text: str):
+        print(text)
+
+
+class RichChatIO(ChatIO):
+    bindings = KeyBindings()
+
+    @bindings.add("escape", "enter")
+    def _(event):
+        event.app.current_buffer.newline()
+
+    def __init__(self, multiline: bool = False, mouse: bool = False):
+        self._prompt_session = PromptSession(history=InMemoryHistory())
+        self._completer = WordCompleter(
+            words=["!!exit", "!!reset", "!!remove", "!!regen", "!!save", "!!load"],
+            pattern=re.compile("$"),
+        )
+        self._console = Console()
+        self._multiline = multiline
+        self._mouse = mouse
+
+    def prompt_for_input(self, role) -> str:
+        self._console.print(f"[bold]{role}:")
+        # TODO(suquark): multiline input has some issues. fix it later.
+        prompt_input = self._prompt_session.prompt(
+            completer=self._completer,
+            multiline=False,
+            mouse_support=self._mouse,
+            auto_suggest=AutoSuggestFromHistory(),
+            key_bindings=self.bindings if self._multiline else None,
+        )
+        self._console.print()
+        return prompt_input
+
+    def prompt_for_output(self, role: str):
+        self._console.print(f"[bold]{role.replace('/', '|')}:")
+
+    def stream_output(self, output_stream):
+        """Stream output from a role."""
+        # TODO(suquark): the console flickers when there is a code block
+        #  above it. We need to cut off "live" when a code block is done.
+
+        # Create a Live context for updating the console output
+        with Live(console=self._console, refresh_per_second=4) as live:
+            # Read lines from the stream
+            for outputs in output_stream:
+                if not outputs:
+                    continue
+                text = outputs["text"]
+                # Render the accumulated text as Markdown
+                # NOTE: this is a workaround for the rendering "unstandard markdown"
+                #  in rich. The chatbots output treat "\n" as a new line for
+                #  better compatibility with real-world text. However, rendering
+                #  in markdown would break the format. It is because standard markdown
+                #  treat a single "\n" in normal text as a space.
+                #  Our workaround is adding two spaces at the end of each line.
+                #  This is not a perfect solution, as it would
+                #  introduce trailing spaces (only) in code block, but it works well
+                #  especially for console output, because in general the console does not
+                #  care about trailing spaces.
+                lines = []
+                for line in text.splitlines():
+                    lines.append(line)
+                    if line.startswith("```"):
+                        # Code block marker - do not add trailing spaces, as it would
+                        #  break the syntax highlighting
+                        lines.append("\n")
+                    else:
+                        lines.append("  \n")
+                markdown = Markdown("".join(lines))
+                # Update the Live console output
+                live.update(markdown)
+        self._console.print()
+        return text
+
+    def print_output(self, text: str):
+        self.stream_output([{"text": text}])
 
 
 @torch.inference_mode()

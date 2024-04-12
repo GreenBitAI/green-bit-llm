@@ -3,7 +3,7 @@
 ## Overview
 
 This package demonstrates the capabilities of [GreenBitAI's low-bit large language models (LLMs)](https://huggingface.co/GreenBitAI) through two main features:
-1. Simple generation with `generation.py` script.
+1. Simple generation with `sim_gen.py` script.
 2. A command-line interface (CLI) based chat demo using the `chat_cli.py` script.
 
 Both tools are designed for efficient natural language processing, enabling quick setups and responses using local models.
@@ -21,7 +21,7 @@ Install green-bit-llm package using pip:
 pip install green-bit-llm
 ```
 
-Or from source:
+or from source:
 
 ```bash
 git clone https://github.com/GreenBitAI/green-bit-llm.git
@@ -43,7 +43,7 @@ pip install pillow requests prompt_toolkit rich
 Run the simple generation script as follows:
 
 ```bash
-python inference/generation.py --model GreenBitAI/Mistral-7B-v0.1-channel-mix-bpw-2.2 --gpus '0' --trust-remote-code --max-tokens 100 --use-flash-attention-2 --prompt 'The meaning of life is' --ignore-chat-template
+CUDA_VISIBLE_DEVICES=0 python inference/sim_gen.py --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --max-tokens 100 --use-flash-attention-2 --ignore-chat-template
 ```
 
 This command generates text based on the provided prompt using the specified GreenBitAI model.
@@ -53,12 +53,9 @@ This command generates text based on the provided prompt using the specified Gre
 To start the chat interface:
 
 ```bash
-python inference/chat_cli.py --model-path GreenBitAI/Mistral-Instruct-7B-v0.2-layer-mix-bpw-2.2 --style rich --debug
+CUDA_VISIBLE_DEVICES=0 python inference/chat_cli.py --model-path GreenBitAI/yi-6b-chat-w4a16g256 --debug --use-flash-attention-2 --multiline --mouse
 ```
-
 This launches a rich command-line interface for interactive chatting.
-
-
 
 ## License
 - The scripts `conversation.py`, `chat_base.py`, and `chat_cli.py` have been modified from their original versions found in [FastChat-serve](https://github.com/lm-sys/FastChat/tree/main/fastchat/serve), which are released under the [Apache 2.0 License](https://github.com/lm-sys/FastChat/tree/main/LICENSE). 

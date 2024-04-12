@@ -20,6 +20,7 @@ class SeparatorStyle(IntEnum):
     NO_COLON_TWO = auto()
     ADD_NEW_LINE_SINGLE = auto()
     LLAMA2 = auto()
+    CHATML = auto()
 
 
 IMAGE_PLACEHOLDER_STR = "$$<image>$$"
@@ -122,6 +123,17 @@ class Conversation:
                         ret += tag + " " + message + seps[i % 2]
                 else:
                     ret += tag
+            return ret
+        elif self.sep_style == SeparatorStyle.CHATML:
+            ret = "" if system_prompt == "" else system_prompt + self.sep + "\n"
+            for role, message in self.messages:
+                if message:
+                    if type(message) is tuple:
+                        message, images = message
+                        message = IMAGE_PLACEHOLDER_STR * len(images) + message
+                    ret += role + "\n" + message + self.sep + "\n"
+                else:
+                    ret += role + "\n"
             return ret
         else:
             raise ValueError(f"Invalid style: {self.sep_style}")
