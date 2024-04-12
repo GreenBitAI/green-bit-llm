@@ -1,5 +1,5 @@
 import torch
-from .utils import BaseLM
+from lm_eval.base import BaseLM
 import torch.nn.functional as F
 from torch import nn
 import torch
