@@ -1,7 +1,7 @@
 ## Evaluation
 
 Example evaluation scripts for the GreenBitAI family of low-bit models.
-- `evaluate.py` contains code to evaluate model ppl performance on `wikitext2,c4_new,ptb` tasks, and few shot ability using `lm_eval` library.
+- `evaluate.py` contains code to evaluate model ppl performance on `wikitext2,c4_new,ptb` tasks, and few shot ability using `lm_eval=0.3.0` library.
     - `--seed` The random seed for data loader.
     - `--model` The path to the local model directory or Hugging Face repo.
     - `--cuda-device-id` CUDA device IDs.
