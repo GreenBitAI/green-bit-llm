@@ -17,9 +17,6 @@ parent_dir = str(Path(__file__).parent.parent)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-from green_bit_llm.model import load, generate
-from green_bit_llm.enum import TextGenMode
-
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-0.5B-layer-mix-bpw-2.2"
 DEFAULT_PROMPT = None
@@ -111,6 +108,7 @@ def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: 
     else:
         prompt = prompt
 
+    from green_bit_llm import generate
     generate(
         model,
         tokenizer,
@@ -132,8 +130,7 @@ def main(args):
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpus
 
     if not torch.cuda.is_available():
-        print("Warning: CUDA is needed to run the model.")
-        sys.exit(0)
+        raise Exception("Warning: CUDA is needed to run the model.")
 
     # Building configs
     tokenizer_config = {"trust_remote_code": True if args.trust_remote_code else None}
@@ -145,6 +142,7 @@ def main(args):
     if args.eos_token is not None:
         tokenizer_config["eos_token"] = args.eos_token
 
+    from green_bit_llm import load
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,
