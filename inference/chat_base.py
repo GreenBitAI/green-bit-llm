@@ -1,3 +1,8 @@
+"""
+Base classes and functions for cli chat demo.
+Code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/serve/inference.py
+"""
+
 import gc
 import sys
 import abc
@@ -12,9 +17,9 @@ parent_dir = str(Path(__file__).parent.parent)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
-from green_bit_llm.model import load
-from inference.conversation import get_conv_template
-from inference.utils import is_partial_stop, is_sentence_complete, get_context_length, prepare_logits_processor, get_conversation_template
+from green_bit_llm import load
+from .conversation import get_conv_template
+from .utils import is_partial_stop, is_sentence_complete, get_context_length, prepare_logits_processor, get_conversation_template
 
 import torch
 
