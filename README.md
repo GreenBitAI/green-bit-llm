@@ -11,7 +11,6 @@ Additionally, you can use our provided evaluation tools to validate the model's 
 
 ## Features
 
-
 ## Installation
 To get started with this package, simply clone the repository and install the required dependencies (for Python >= 3.9):
 ```bash
@@ -27,14 +26,15 @@ conda activate gbai_cuda_lm
 ## Usage
 ### Inference
 
-```bash
-```
+TODO: link to readme file in the sub-directory
+
+### Evaluation
+
+TODO: link to readme file in the sub-directory
 
 ### sft
 
-```bash
-
-```
+TODO: link to readme file in the sub-directory
 
 ## Requirements
 
