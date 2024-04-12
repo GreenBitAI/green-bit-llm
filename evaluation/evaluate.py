@@ -162,7 +162,7 @@ def setup_arg_parser():
     parser.add_argument(
         "--few-shot-tasks",
         type=str,
-        default="openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq,race,truthfulqa,anli_r1,anli_r2,anli_r3,wic",
+        default="openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq,race,truthfulqa_mc,anli_r1,anli_r2,anli_r3,wic",
         help="Few-shot learning ability evaluation tasks.",
     )
     parser.add_argument(
