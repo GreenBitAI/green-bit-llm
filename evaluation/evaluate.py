@@ -16,8 +16,7 @@ from .datautils import get_loaders
 
 from green_bit_llm.model import load
 from pathlib import Path
-
-from lm_eval.api.registry import ALL_TASKS 
+ 
 from lm_eval import evaluator
 
 import warnings
@@ -78,49 +77,20 @@ def lm_evaluate(lm, args, logger):
             lm.model.config.use_cache = use_cache
             results[dataset] = ppl.item()
 
-    if args.eval_few_shot != "":
-        few_shot_tasks = pattern_match(args.few_shot_tasks.split(","), ALL_TASKS)
+    if args.eval_few_shot and args.eval_few_shot != "":
+        few_shot_tasks = args.few_shot_tasks.split(",")
 
         eval_results = evaluator.simple_evaluate(
             lm,
             tasks=few_shot_tasks,
+            batch_size=args.batch_size,
             num_fewshot=args.num_fewshot,
-            limit = None,
+            no_cache=True
         )
         
-        eval_results = eval_results["results"]
-
-        results.update(eval_results)
-        logger.info(results)
-
-        # for test of MMLU
-        if 'hendrycksTest' in args.few_shot_tasks:
-            all_cors = []
-            all_cors_norm = []
-            subcat_cors = {subcat: [] for subcat_lists in subcategories.values() for subcat in subcat_lists}
-            cat_cors = {cat: [] for cat in categories}
-            cat_cors_norm = {cat: [] for cat in categories}
-            for key in t_results['results'].keys():
-                if not 'hendrycksTest' in key:
-                    continue
-                subject = key.split('-')[-1]
-                cors = t_results['results'][key]['acc']
-                cors_norm = t_results['results'][key]['acc_norm']
-                subcats = subcategories[subject]
-                for subcat in subcats:
-                    subcat_cors[subcat].append(cors)
-                    for key in categories.keys():
-                        if subcat in categories[key]:
-                            cat_cors[key].append(cors)
-                            cat_cors_norm[key].append(cors_norm)
-                    all_cors.append(cors)
-                    all_cors_norm.append(cors_norm)
-
-            for cat in cat_cors:
-                cat_acc = np.mean(cat_cors[cat])
-                logger.info("Average accuracy {:.4f} - {}".format(cat_acc, cat))
-            weighted_acc = np.mean(all_cors)
-            logger.info("Average accuracy: {:.4f}".format(weighted_acc))
+        results.update({"results": eval_results["results"]})
+        results.update({"versions": eval_results["versions"]})
+        logger.info(evaluator.make_table(results))
 
     return results
 
@@ -143,63 +113,63 @@ def setup_arg_parser():
         "--cuda-device-id",
         type=str,
         default="0",
-        help="CUDA device IDs",
+        help="CUDA device IDs.",
     )
     parser.add_argument(
         "--trust-remote-code",
         action="store_true",
-        help="Enable trusting remote code for tokenizer",
+        help="Enable trusting remote code for tokenizer.",
     )
     parser.add_argument(
         "--use-flash-attention-2",
         action="store_true",
-        help="Enable using flash attention v2",
+        help="Enable using flash attention v2.",
     )
     parser.add_argument(
         "--eos-token",
         type=str,
         default="<|im_end|>",
-        help="End of sequence token for tokenizer",
+        help="End of sequence token for tokenizer.",
     )
     parser.add_argument(
         "--seqlen",
         type=int,
         default=DEFAULT_SEQLEN,
-        help="Sequence length"
+        help="Sequence length."
     )
     parser.add_argument(
         "--eval-ppl",
         action="store_true",
-        help="evaluate LLM prediction perplexity",
+        help="Evaluate LLM prediction perplexity.",
     )
     parser.add_argument(
         "--ppl-tasks",
         type=str,
         default="wikitext2, c4_new, ptb",
-        help="Specify ppl evaluation task",
+        help="Specify ppl evaluation task.",
     )
     parser.add_argument(
         "--eval-few-shot",
         action="store_true",
-        help="Evaluate LLM few-shot learning ability",
+        help="Evaluate LLM few-shot learning ability.",
     )
     parser.add_argument(
         "--num-fewshot",
         type=int,
         default=0,
-        help="Specify num of few shot examples for evaluation",
+        help="Specify num of few shot examples for evaluation.",
     )
     parser.add_argument(
         "--few-shot-tasks",
         type=str,
         default="openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq,race,truthfulqa,anli_r1,anli_r2,anli_r3,wic",
-        help="Few-shot learning ability evaluation tasks",
+        help="Few-shot learning ability evaluation tasks.",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=16,
-        help="batch size for few-shot evaluation",
+        help="Batch size for few-shot evaluation.",
     )
     parser.add_argument(
         "--save-dir",
