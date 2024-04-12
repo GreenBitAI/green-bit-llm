@@ -18,7 +18,6 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 from green_bit_llm.model import load, generate
-from green_bit_llm.enum import TextGenMode
 
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-0.5B-layer-mix-bpw-2.2"
