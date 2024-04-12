@@ -1,8 +1,12 @@
+"""
+cli chat demo.
+Code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/serve/cli.py
+"""
+
 import argparse
 import os
 import re
 import sys
-from pathlib import Path
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -13,13 +17,8 @@ from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
 
-# Add the parent directory to sys.path
-parent_dir = str(Path(__file__).parent.parent)
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-
-from inference.chat_base import ChatIO, chat_loop
-from inference.utils import str_to_torch_dtype, is_chat_model
+from .chat_base import ChatIO, chat_loop
+from .utils import str_to_torch_dtype, is_chat_model
 
 DEFAULT_SEQLEN = 2048
 
@@ -236,7 +235,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model-path",
         type=str,
-        default="lmsys/vicuna-7b-v1.5",
+        default="GreenBitAI/Mistral-Instruct-7B-v0.2-layer-mix-bpw-2.2",
         help="The path to the weights. This can be a local folder or a Hugging Face repo ID.",
     )
     parser.add_argument(
