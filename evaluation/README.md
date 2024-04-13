@@ -1,5 +1,15 @@
 ## Evaluation
 
+### Installing Dependencies
+
+Ensure your system has Python3 and pip installed before proceeding and install the following additional libraries:
+
+```bash
+pip install lm_eval==0.3.0 termcolor
+```
+
+### Command Details 
+
 Example evaluation scripts for the GreenBitAI family of low-bit models.
 - `evaluate.py` contains code to evaluate model ppl performance on `wikitext2,c4_new,ptb` tasks, and few shot ability using `lm_eval==0.3.0` library.
     - `--seed` The random seed for data loader.

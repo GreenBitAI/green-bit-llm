@@ -1,17 +1,14 @@
 import os
 import argparse
 import sys
-import json
-import pprint
 
 import torch
 import torch.nn as nn
 
-from transformers import PreTrainedTokenizer
 from tqdm import tqdm
 
 from .lmclass import LMClass
-from .utils import create_logger, add_dict_to_json_file, pattern_match
+from .utils import create_logger, add_dict_to_json_file
 from .datautils import get_loaders
 
 from green_bit_llm.model import load
