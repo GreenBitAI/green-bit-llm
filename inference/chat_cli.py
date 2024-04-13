@@ -2,7 +2,6 @@
 cli chat demo.
 Code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/serve/cli.py
 """
-
 import argparse
 import os
 import sys
@@ -11,7 +10,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules
 
 import torch
 
-from utils import str_to_torch_dtype, is_chat_model
+# Add the parent directory to sys.path
+from .utils import str_to_torch_dtype, is_chat_model
 
 
 def main(args):
@@ -28,7 +28,7 @@ def main(args):
         raise Exception("Warning: CUDA is needed to run the model.")
 
     try:
-        from chat_base import chat_loop, SimpleChatIO, RichChatIO
+        from .chat_base import chat_loop, SimpleChatIO, RichChatIO
     except Exception:
         raise Exception("Error occurred when import chat loop, ChatIO classes.")
 

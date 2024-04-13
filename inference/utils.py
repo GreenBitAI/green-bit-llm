@@ -9,12 +9,7 @@ from transformers.generation.logits_process import (
     TopPLogitsWarper,
 )
 
-# Add the parent directory to sys.path
-parent_dir = str(Path(__file__).parent.parent)
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-
-from inference.conversation import Conversation, get_conv_template
+from .conversation import Conversation, get_conv_template
 
 # value is the search term in model name,
 # key is the name of conversation template

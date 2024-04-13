@@ -10,3 +10,8 @@ dependencies:
       - sentencepiece
       - huggingface_hub
       - transformers>=4.38.0
+      - accelerate
+      - colorama
+      - flash-attn
+      - datasets
+      - lm_eval==0.3.0
