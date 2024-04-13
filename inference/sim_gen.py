@@ -12,11 +12,6 @@ from transformers import PreTrainedTokenizer
 
 from pathlib import Path
 
-# Add the parent directory to sys.path
-parent_dir = str(Path(__file__).parent.parent)
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-0.5B-layer-mix-bpw-2.2"
 DEFAULT_PROMPT = None
