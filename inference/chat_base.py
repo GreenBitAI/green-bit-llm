@@ -23,14 +23,10 @@ from rich.markdown import Markdown
 
 import torch
 
-# Add the parent directory to sys.path
-parent_dir = str(Path(__file__).parent.parent)
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
-
 from green_bit_llm import load
-from conversation import get_conv_template
-from utils import is_partial_stop, is_sentence_complete, get_context_length, prepare_logits_processor, get_conversation_template
+
+from .conversation import get_conv_template
+from .utils import is_partial_stop, is_sentence_complete, get_context_length, prepare_logits_processor, get_conversation_template
 
 
 class ChatIO(abc.ABC):
