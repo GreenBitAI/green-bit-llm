@@ -48,6 +48,7 @@ Please see the description of the [sft package](sft/README.md) for details.
 ## Requirements
 
 - Python 3.x
+- [Bitorch Engine](https://github.com/GreenBitAI/bitorch-engine)
 - See `requirements.txt` or `environment.yml` for a complete list of dependencies
 
 ## Examples
