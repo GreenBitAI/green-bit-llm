@@ -7,3 +7,8 @@ transformers>=4.38.0
 huggingface_hub
 flash-attn
 lm_eval==0.3.0
+termcolor
+pillow
+requests
+prompt_toolkit
+rich
