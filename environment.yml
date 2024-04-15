@@ -15,3 +15,8 @@ dependencies:
       - flash-attn
       - datasets
       - lm_eval==0.3.0
+      - termcolor
+      - pillow
+      - requests
+      - prompt_toolkit
+      - rich
