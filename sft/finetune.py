@@ -116,6 +116,7 @@ def main(args):
     args = TrainingArguments(output_dir="./output",
                             gradient_checkpointing=True,
                             auto_find_batch_size=True,
+                            max_grad_norm=0 # NOTE: max_grad_norm MUST < 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                             )
 
     optimizer = DiodeMix(model.parameters(), lr=5e-6)
