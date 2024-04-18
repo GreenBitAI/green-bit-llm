@@ -178,8 +178,6 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
             make_quant(layer, layers_to_quantize, layer_mode=layer_mode, group_size=group_size, bits=bits, dtype=dtype,
                        quant_strategy=strategy_per_block, model_type=config.model_type, requires_grad=requires_grad)
 
-    # model.tie_weights()
-    # print(model)
     # Load checkpoint, dispatch model, and apply post-initialization configurations
     model = accelerate.load_checkpoint_and_dispatch(model=model, checkpoint=model_path, device_map=device_map,
                                                     no_split_module_classes=["LlamaDecoderLayer"])
