@@ -98,7 +98,7 @@ def create_device_map(cuda_device_id):
     return device_map
 
 
-def create_param_groups(model:nn.Module, args: argparse.ArgumentParser):
+def create_param_groups(model, args: argparse.ArgumentParser):
     """
     Create parameter groups based on the bit-width of quantized weights in the model.
     This function categorizes parameters into groups with different learning rates and beta values
@@ -125,35 +125,35 @@ def create_param_groups(model:nn.Module, args: argparse.ArgumentParser):
             else:
                 raise Exception(f"Error: Invalid qweight bit width: '{module.w_bit}'.")
 
-        id_2bit_params = [id(p) for p in params_2_bit]
-        id_4bit_params = [id(p) for p in params_4_bit]
-        # Concatenate IDs to form a single list
-        excluded_ids = id_2bit_params + id_4bit_params
+    id_2bit_params = [id(p) for p in params_2_bit]
+    id_4bit_params = [id(p) for p in params_4_bit]
+    # Concatenate IDs to form a single list
+    excluded_ids = id_2bit_params + id_4bit_params
 
-        # Create list of regular parameters excluding 2-bit and 4-bit params
-        params_regular = [p for p in model.parameters() if id(p) not in excluded_ids]
+    # Create list of regular parameters excluding 2-bit and 4-bit params
+    params_regular = [p for p in model.parameters() if id(p) not in excluded_ids]
 
-        params_group_2bit = {'params': params_2_bit, 'lr': 2e-3, 'betas': (0.9, 0.999)}
-        params_group_4bit = {'params': params_4_bit, 'lr': 1e-3, 'betas': (0.9, 0.999)}
-        params_group_regular = {'params': params_regular, 'lr': 1e-5, 'betas': (0.9, 0.999)}
+    params_group_2bit = {'params': params_2_bit, 'lr': 2e-3, 'betas': (0.9, 0.999)}
+    params_group_4bit = {'params': params_4_bit, 'lr': 1e-3, 'betas': (0.9, 0.999)}
+    params_group_regular = {'params': params_regular, 'lr': 1e-5, 'betas': (0.9, 0.999)}
 
-        # Optionally add extra settings from command line arguments
-        if args.galore:
-            galore_settings = {
-                'rank': args.rank,
-                'update_proj_gap': args.update_proj_gap,
-                'scale': args.galore_scale,
-                'proj_type': args.proj_type
-            }
-            params_group_2bit.update(galore_settings)
-            params_group_4bit.update(galore_settings)
+    # Optionally add extra settings from command line arguments
+    if args.galore:
+        galore_settings = {
+            'rank': args.rank,
+            'update_proj_gap': args.update_proj_gap,
+            'scale': args.galore_scale,
+            'proj_type': args.proj_type
+        }
+        params_group_2bit.update(galore_settings)
+        params_group_4bit.update(galore_settings)
 
-        param_groups = [
-            params_group_regular,
-            params_group_2bit,
-            params_group_4bit
-        ]
-        return param_groups
+    param_groups = [
+        params_group_regular,
+        params_group_2bit,
+        params_group_4bit
+    ]
+    return param_groups
 
 
 def main(args):
@@ -177,7 +177,9 @@ def main(args):
         model_config=pretrain_model_config,
         requires_grad=True,
     )
-    
+
+    param_groups = create_param_groups(model, args)
+
     model.train()
 
     dataset = load_dataset("imdb", split="train")
@@ -187,8 +189,6 @@ def main(args):
                             auto_find_batch_size=True,
                             max_grad_norm=0 # NOTE: max_grad_norm MUST < 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                             )
-
-    param_groups = create_param_groups(model, args)
 
     optimizer = DiodeMix(param_groups)
 
