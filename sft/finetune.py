@@ -25,7 +25,6 @@ except ModuleNotFoundError as e:
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-2.2"
 DEFAULT_SEQLEN = 2048
 DEFAULT_RANDOM_SEED = 0
-DTYPE = torch.half
 
 
 def setup_arg_parser():
@@ -77,7 +76,13 @@ def setup_arg_parser():
         default="../log/",
         help="Specify save dir for eval results.",
     )
-
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        choices=["float", "half"],
+        default="half",
+        help="Dtype used in optimizer.",
+    )
     # GaLore parameters
     parser.add_argument(
         "--galore",
@@ -90,6 +95,15 @@ def setup_arg_parser():
     parser.add_argument("--proj_type", type=str, default="std")
     return parser
 
+def str_to_torch_dtype(dtype: str):
+    if dtype is None:
+        return None
+    elif dtype == "float":
+        return torch.float
+    elif dtype == "half":
+        return torch.half
+    else:
+        raise ValueError(f"Unsupported dtype: {dtype}")
 
 def create_device_map(cuda_device_id):
     ids = cuda_device_id.split(',')
@@ -171,7 +185,6 @@ def main(args):
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,
-        dtype=DTYPE,
         device_map='auto',
         seqlen=args.seqlen,
         model_config=pretrain_model_config,
@@ -186,11 +199,12 @@ def main(args):
 
     train_args = TrainingArguments(output_dir="./output",
                             gradient_checkpointing=True,
-                            auto_find_batch_size=True,
-                            max_grad_norm=0 # NOTE: max_grad_norm MUST < 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
+                            # auto_find_batch_size=True,
+                           per_device_train_batch_size=4,
+                            max_grad_norm=0 # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                             )
 
-    optimizer = DiodeMix(param_groups)
+    optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
 
     optimizers = (optimizer, None)
 
