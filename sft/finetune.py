@@ -25,7 +25,9 @@ except ModuleNotFoundError as e:
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-2.2"
 DEFAULT_SEQLEN = 2048
 DEFAULT_RANDOM_SEED = 0
-
+DEFAULT_LR = 1e-5
+DEFAULT_LR_GALORE = 1e-4
+DEFAULT_BETAS = (0.9, 0.999)
 
 def setup_arg_parser():
     """Set up and return the argument parser."""
@@ -90,10 +92,43 @@ def setup_arg_parser():
         help="Enable using galore",
     )
     parser.add_argument("--rank", type=int, default=128)
-    parser.add_argument("--update_proj_gap", type=int, default=50)
-    parser.add_argument("--galore_scale", type=float, default=1.0)
+    parser.add_argument("--update_proj_gap", type=int, default=200)
+    parser.add_argument("--galore_scale", type=float, default=0.25)
     parser.add_argument("--proj_type", type=str, default="std")
+
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="tatsu-lab/alpaca",
+        help="Dataset name for finetuning",
+    )
+    # qweight related
+    parser.add_argument(
+        "--tune-qweight-only",
+        action="store_true",
+        help="Set whether to adjust only the low-bit qweight and keep the regular parameters unchanged during the training process.",
+    )
+    parser.add_argument(
+        "--lr-2bit",
+        type=float,
+        default=-1.0,
+        help="Learning rate for 2-bit qweight."
+    )
+    parser.add_argument(
+        "--lr-4bit",
+        type=float,
+        default=-1.0,
+        help="Learning rate for 4-bit qweight."
+    )
+    parser.add_argument(
+        "--lr-fp",
+        type=float,
+        default=DEFAULT_LR,
+        help="Learning rate for full-precision weight."
+    )
+    parser.add_argument("--optimizer", default="DiodeMix")
     return parser
+
 
 def str_to_torch_dtype(dtype: str):
     if dtype is None:
@@ -105,11 +140,18 @@ def str_to_torch_dtype(dtype: str):
     else:
         raise ValueError(f"Unsupported dtype: {dtype}")
 
+
 def create_device_map(cuda_device_id):
     ids = cuda_device_id.split(',')
     # Create strings in the format "cuda:x" for each ID and put them into the collection
     device_map = {f"cuda:{id}" for id in ids}
     return device_map
+
+
+def get_learning_rate(lr_bit, galore, default_lr_galore, default_lr):
+    if lr_bit > 0:
+        return lr_bit
+    return default_lr_galore if galore else default_lr
 
 
 def create_param_groups(model, args: argparse.ArgumentParser):
@@ -147,9 +189,12 @@ def create_param_groups(model, args: argparse.ArgumentParser):
     # Create list of regular parameters excluding 2-bit and 4-bit params
     params_regular = [p for p in model.parameters() if id(p) not in excluded_ids]
 
-    params_group_2bit = {'params': params_2_bit, 'lr': 2e-3, 'betas': (0.9, 0.999)}
-    params_group_4bit = {'params': params_4_bit, 'lr': 1e-3, 'betas': (0.9, 0.999)}
-    params_group_regular = {'params': params_regular, 'lr': 1e-5, 'betas': (0.9, 0.999)}
+    lr_2 = get_learning_rate(args.lr_2bit, args.galore, DEFAULT_LR_GALORE, DEFAULT_LR)
+    lr_4 = get_learning_rate(args.lr_4bit, args.galore, DEFAULT_LR_GALORE, DEFAULT_LR)
+
+    params_group_2bit = {'params': params_2_bit, 'lr': lr_2, 'betas': DEFAULT_BETAS}
+    params_group_4bit = {'params': params_4_bit, 'lr': lr_4, 'betas': DEFAULT_BETAS}
+    params_group_regular = {'params': params_regular, 'lr': args.lr_fp, 'betas': DEFAULT_BETAS}
 
     # Optionally add extra settings from command line arguments
     if args.galore:
@@ -163,10 +208,12 @@ def create_param_groups(model, args: argparse.ArgumentParser):
         params_group_4bit.update(galore_settings)
 
     param_groups = [
-        params_group_regular,
         params_group_2bit,
         params_group_4bit
     ]
+    if not args.tune_qweight_only:
+        param_groups.append(params_group_regular)
+
     return param_groups
 
 
@@ -195,14 +242,16 @@ def main(args):
 
     model.train()
 
-    dataset = load_dataset("imdb", split="train")
+    dataset = load_dataset(args.dataset, split="train")
 
-    train_args = TrainingArguments(output_dir="./output",
-                            gradient_checkpointing=True,
-                            # auto_find_batch_size=True,
-                           per_device_train_batch_size=4,
-                            max_grad_norm=0 # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
-                            )
+    train_args = TrainingArguments(
+                    output_dir="./output",
+                    gradient_checkpointing=True,
+                    # auto_find_batch_size=True,
+                    per_device_train_batch_size=4,
+                    logging_steps=1,
+                    max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
+                )
 
     optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
 
