@@ -1,8 +1,8 @@
 import argparse
 import sys
+import os
 
 import torch
-import torch.nn as nn
 
 from transformers import PreTrainedTokenizer, TrainingArguments
 from datasets import load_dataset
@@ -14,12 +14,12 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-ENGINE_AVAILABLE = True
 try:
     from bitorch_engine.optim import DiodeMix
 except ModuleNotFoundError as e:
-    ENGINE_AVAILABLE = False
     raise Exception("Error: Bitorch Engine optimizer (DiodeMix) are not available.")
+
+from .optim import AdamW8bit
 
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-2.2"
@@ -45,12 +45,6 @@ def setup_arg_parser():
         help="The path to the local model directory or Hugging Face repo.",
     )
     parser.add_argument(
-        "--cuda-device-id",
-        type=str,
-        default="0",
-        help="CUDA device IDs",
-    )
-    parser.add_argument(
         "--trust-remote-code",
         action="store_true",
         help="Enable trusting remote code for tokenizer",
@@ -59,12 +53,6 @@ def setup_arg_parser():
         "--use-flash-attention-2",
         action="store_true",
         help="Enable using flash attention v2",
-    )
-    parser.add_argument(
-        "--eos-token",
-        type=str,
-        default="<|im_end|>",
-        help="End of sequence token for tokenizer",
     )
     parser.add_argument(
         "--seqlen",
@@ -126,7 +114,13 @@ def setup_arg_parser():
         default=DEFAULT_LR,
         help="Learning rate for full-precision weight."
     )
-    parser.add_argument("--optimizer", default="DiodeMix")
+    parser.add_argument(
+        "--optimizer",
+        type=str,
+        default="DiodeMix",
+        help="Optimizer to use: 1. DiodeMix, 2. AdamW8bit"
+    )
+    parser.add_argument("--weight_decay", type=float, default=0.0)
     return parser
 
 
@@ -136,16 +130,9 @@ def str_to_torch_dtype(dtype: str):
     elif dtype == "float":
         return torch.float
     elif dtype == "half":
-        return torch.half
+        return torch.float16
     else:
         raise ValueError(f"Unsupported dtype: {dtype}")
-
-
-def create_device_map(cuda_device_id):
-    ids = cuda_device_id.split(',')
-    # Create strings in the format "cuda:x" for each ID and put them into the collection
-    device_map = {f"cuda:{id}" for id in ids}
-    return device_map
 
 
 def get_learning_rate(lr_bit, galore, default_lr_galore, default_lr):
@@ -253,7 +240,10 @@ def main(args):
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                 )
 
-    optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
+    if 'adamw8bit' in args.optimizer.lower():
+        optimizer = AdamW8bit(param_groups, lr=args.lr, weight_decay=args.weight_decay, dtype=str_to_torch_dtype(args.dtype))
+    elif 'diodemix' in args.optimizer.lower():
+        optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
 
     optimizers = (optimizer, None)
 
@@ -270,7 +260,7 @@ def main(args):
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():
-        print("Warning: CUDA is needed to run the model.")
+        print("Warning: CUDA is required to run the model.")
         sys.exit(0)
 
     parser = setup_arg_parser()

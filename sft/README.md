@@ -36,6 +36,12 @@ pip install trl
 pip install -U git+https://github.com/huggingface/peft.git
 ```
 
+If you want to use a **8-bit customized optimizer** with the gradient low-rank projection for maximizing memory savings, you will also need to install the following package:
+
+```bash
+pip install bitsandbytes, galore-torch
+```
+
 ## Usage
 
 ### Full-parameter finetuning
@@ -58,5 +64,13 @@ CUDA_VISIBLE_DEVICES=0 python ...
 ```
 ...
 
+### Current Limitations
+
+1. **placeholder a**
+2. **placeholder b**
+
+
 ## License
-We release our changes and additions to these files under the [Apache 2.0 License](../LICENSE).
+- The scripts 'adamw8bit.py' has been modified from [GaLore repository](https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py), which are released under the Apache 2.0 License.
+- The scripts 'bnb_optimizer.py' has been modified from [bitsandbytes repository](https://github.com/TimDettmers/bitsandbytes/blob/main/bitsandbytes/optim/optimizer.py), which are released under the MIT License.
+- We release our changes and additions to these files under the [Apache 2.0 License](../LICENSE).
