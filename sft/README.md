@@ -40,13 +40,16 @@ pip install -U git+https://github.com/huggingface/peft.git
 
 ### Full-parameter finetuning
 
-Run the script as follows:
+Run the script as follows to fine-tune the quantized weights of the model on the target dataset. 
+The '--tune-qweight-only' parameter determines whether to fine-tune only the quantized weights or all weights, including non-quantized ones.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python ...
+CUDA_VISIBLE_DEVICES=0 python -m sft.finetune --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --galore --tune-qweight-only
 ```
-
-This command ... using the specified GreenBitAI model.
+For more information about this parameter, please refer to:
+```bash
+python -m sft.finetune --help
+```
 
 ### Parameter efficient finetuning
 
