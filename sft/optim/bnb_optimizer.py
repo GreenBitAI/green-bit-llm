@@ -316,7 +316,7 @@ class Optimizer8bit(torch.optim.Optimizer):
     def init_state(self, group, p, gindex, pindex, grad):
         raise NotImplementedError("init_state method needs to be overridden")
 
-    def update_step(self, group, p, gindex, pindex, grad=None, w_unpacked=None):
+    def update_step(self, group, p, gindex, pindex, grad=None):
         raise NotImplementedError("The update_step method needs to be overridden")
 
     def get_state_buffer(self, p, dtype=torch.float32):
@@ -476,7 +476,7 @@ class Optimizer2State(Optimizer8bit):
             state["unorm_vec"] = torch.zeros((1,), device=p.device)
 
     @torch.no_grad()
-    def update_step(self, group, p, gindex, pindex, grad=None, w_unpacked=None):
+    def update_step(self, group, p, gindex, pindex, grad=None):
         state = self.state[p]
         if grad is None:
             grad = p.grad
@@ -496,14 +496,11 @@ class Optimizer2State(Optimizer8bit):
         else:
             gnorm_scale = 1.0
 
-        # use unpacked weight for update
-        _p = w_unpacked if w_unpacked is not None else p
-
         if state["state1"].dtype == torch.float:
             F.optimizer_update_32bit(
                 self.optimizer_name,
                 grad,
-                _p,
+                p,
                 state["state1"],
                 config["betas"][0],
                 config["eps"],
@@ -522,7 +519,7 @@ class Optimizer2State(Optimizer8bit):
             F.optimizer_update_8bit(
                 self.optimizer_name,
                 grad,
-                _p,
+                p,
                 state["state1"],
                 state["state2"],
                 config["betas"][0],
@@ -549,7 +546,7 @@ class Optimizer2State(Optimizer8bit):
             F.optimizer_update_8bit_blockwise(
                 self.optimizer_name,
                 grad,
-                _p,
+                p,
                 state["state1"],
                 state["state2"],
                 config["betas"][0],

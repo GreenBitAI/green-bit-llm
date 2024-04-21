@@ -27,6 +27,7 @@ DEFAULT_SEQLEN = 2048
 DEFAULT_RANDOM_SEED = 0
 DEFAULT_LR = 1e-5
 DEFAULT_LR_GALORE = 1e-4
+DEFAULT_LR_ADAMW8BIT = 5e-3
 DEFAULT_BETAS = (0.9, 0.999)
 
 def setup_arg_parser():
@@ -176,8 +177,16 @@ def create_param_groups(model, args: argparse.ArgumentParser):
     # Create list of regular parameters excluding 2-bit and 4-bit params
     params_regular = [p for p in model.parameters() if id(p) not in excluded_ids]
 
-    lr_2 = get_learning_rate(args.lr_2bit, args.galore, DEFAULT_LR_GALORE, DEFAULT_LR)
-    lr_4 = get_learning_rate(args.lr_4bit, args.galore, DEFAULT_LR_GALORE, DEFAULT_LR)
+    lr_2 = get_learning_rate(
+        args.lr_2bit,
+        args.galore,
+        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer else DEFAULT_LR_GALORE,
+        DEFAULT_LR)
+    lr_4 = get_learning_rate(
+        args.lr_4bit,
+        args.galore,
+        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer else DEFAULT_LR_GALORE,
+        DEFAULT_LR)
 
     params_group_2bit = {'params': params_2_bit, 'lr': lr_2, 'betas': DEFAULT_BETAS}
     params_group_4bit = {'params': params_4_bit, 'lr': lr_4, 'betas': DEFAULT_BETAS}
@@ -213,9 +222,6 @@ def main(args):
         "use_flash_attention_2": True if args.use_flash_attention_2 else None
     }
 
-    if args.eos_token is not None:
-        tokenizer_config["eos_token"] = args.eos_token
-
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,
@@ -240,13 +246,15 @@ def main(args):
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                 )
 
+    # Optimizer
     if 'adamw8bit' in args.optimizer.lower():
-        optimizer = AdamW8bit(param_groups, lr=args.lr, weight_decay=args.weight_decay, dtype=str_to_torch_dtype(args.dtype))
+        optimizer = AdamW8bit(param_groups, weight_decay=args.weight_decay, dtype=str_to_torch_dtype(args.dtype))
     elif 'diodemix' in args.optimizer.lower():
         optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
 
     optimizers = (optimizer, None)
 
+    # Trainer
     trainer = SFTTrainer(
         model=model,
         args=train_args,
