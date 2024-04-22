@@ -1,25 +1,27 @@
 import argparse
 import sys
-import os
 
 import torch
+import torch.nn as nn
 
 from transformers import PreTrainedTokenizer, TrainingArguments
 from datasets import load_dataset
 from trl import SFTTrainer
+from peft import PeftModel, LoraConfig, get_peft_model
 
 from green_bit_llm.model import load
+from .peft_utils.model import *
 
 import warnings
 
 warnings.filterwarnings('ignore')
 
+ENGINE_AVAILABLE = True
 try:
     from bitorch_engine.optim import DiodeMix
 except ModuleNotFoundError as e:
+    ENGINE_AVAILABLE = False
     raise Exception("Error: Bitorch Engine optimizer (DiodeMix) are not available.")
-
-from .optim import AdamW8bit
 
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0"
@@ -27,7 +29,7 @@ DEFAULT_SEQLEN = 512
 DEFAULT_RANDOM_SEED = 0
 DEFAULT_LR = 1e-5
 DEFAULT_LR_GALORE = 1e-4
-DEFAULT_LR_ADAMW8BIT = 5e-3
+DEFAULT_LR_FP = 1e-6
 DEFAULT_BETAS = (0.9, 0.999)
 
 def setup_arg_parser():
@@ -46,6 +48,12 @@ def setup_arg_parser():
         help="The path to the local model directory or Hugging Face repo.",
     )
     parser.add_argument(
+        "--cuda-device-id",
+        type=str,
+        default="0",
+        help="CUDA device IDs",
+    )
+    parser.add_argument(
         "--trust-remote-code",
         action="store_true",
         help="Enable trusting remote code for tokenizer",
@@ -54,6 +62,12 @@ def setup_arg_parser():
         "--use-flash-attention-2",
         action="store_true",
         help="Enable using flash attention v2",
+    )
+    parser.add_argument(
+        "--eos-token",
+        type=str,
+        default="<|im_end|>",
+        help="End of sequence token for tokenizer",
     )
     parser.add_argument(
         "--seqlen",
@@ -74,17 +88,6 @@ def setup_arg_parser():
         default="half",
         help="Dtype used in optimizer.",
     )
-    # GaLore parameters
-    parser.add_argument(
-        "--galore",
-        action="store_true",
-        help="Enable using galore",
-    )
-    parser.add_argument("--rank", type=int, default=128)
-    parser.add_argument("--update_proj_gap", type=int, default=200)
-    parser.add_argument("--galore_scale", type=float, default=0.25)
-    parser.add_argument("--proj_type", type=str, default="std")
-
     parser.add_argument(
         "--dataset",
         type=str,
@@ -93,35 +96,12 @@ def setup_arg_parser():
     )
     # qweight related
     parser.add_argument(
-        "--tune-qweight-only",
-        action="store_true",
-        help="Set whether to adjust only the low-bit qweight and keep the regular parameters unchanged during the training process.",
-    )
-    parser.add_argument(
-        "--lr-2bit",
-        type=float,
-        default=-1.0,
-        help="Learning rate for 2-bit qweight."
-    )
-    parser.add_argument(
-        "--lr-4bit",
-        type=float,
-        default=-1.0,
-        help="Learning rate for 4-bit qweight."
-    )
-    parser.add_argument(
         "--lr-fp",
         type=float,
-        default=DEFAULT_LR,
+        default=DEFAULT_LR_FP,
         help="Learning rate for full-precision weight."
     )
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="DiodeMix",
-        help="Optimizer to use: 1. DiodeMix, 2. AdamW8bit"
-    )
-    parser.add_argument("--weight_decay", type=float, default=0.0)
+    parser.add_argument("--optimizer", default="DiodeMix")
     return parser
 
 
@@ -131,23 +111,21 @@ def str_to_torch_dtype(dtype: str):
     elif dtype == "float":
         return torch.float
     elif dtype == "half":
-        return torch.float16
+        return torch.half
     else:
         raise ValueError(f"Unsupported dtype: {dtype}")
 
 
-def get_learning_rate(lr_bit, galore, default_lr_galore, default_lr):
-    if lr_bit > 0:
-        return lr_bit
-    return default_lr_galore if galore else default_lr
+def create_device_map(cuda_device_id):
+    ids = cuda_device_id.split(',')
+    # Create strings in the format "cuda:x" for each ID and put them into the collection
+    device_map = {f"cuda:{id}" for id in ids}
+    return device_map
 
 
 def create_param_groups(model, args: argparse.ArgumentParser):
     """
-    Create parameter groups based on the bit-width of quantized weights in the model.
-    This function categorizes parameters into groups with different learning rates and beta values
-    for optimizers.
-
+    Create parameter groups for parameter efficient finetuning.
     Args:
         model (nn.Module): The neural network model.
         args (argparse.ArgumentParser): Command line arguments for additional parameters.
@@ -155,62 +133,16 @@ def create_param_groups(model, args: argparse.ArgumentParser):
     Returns:
         List[dict]: A list of dictionaries where each dictionary contains a parameter group.
     """
-    params_2_bit = []
-    params_4_bit = []
+    params_groups = []
 
-    from bitorch_engine.layers.qlinear.nbit import MPQLinearBase
+    # Create list of peft parameters
+    params_lora = [p for n, p in model.named_parameters() if "lora" in n]
+     
+    params_group_lora = {'params': params_lora, 'lr': args.lr_fp, 'betas': DEFAULT_BETAS}
+    
+    params_groups.append(params_group_lora)
 
-    for module_name, module in model.named_modules():
-        if issubclass(type(module), MPQLinearBase):
-            if module.w_bit == 2:
-                params_2_bit.append(module.qweight)
-            elif module.w_bit == 4:
-                params_4_bit.append(module.qweight)
-            else:
-                raise Exception(f"Error: Invalid qweight bit width: '{module.w_bit}'.")
-
-    id_2bit_params = [id(p) for p in params_2_bit]
-    id_4bit_params = [id(p) for p in params_4_bit]
-    # Concatenate IDs to form a single list
-    excluded_ids = id_2bit_params + id_4bit_params
-
-    # Create list of regular parameters excluding 2-bit and 4-bit params
-    params_regular = [p for p in model.parameters() if id(p) not in excluded_ids]
-
-    lr_2 = get_learning_rate(
-        args.lr_2bit,
-        args.galore,
-        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer else DEFAULT_LR_GALORE,
-        DEFAULT_LR)
-    lr_4 = get_learning_rate(
-        args.lr_4bit,
-        args.galore,
-        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer else DEFAULT_LR_GALORE,
-        DEFAULT_LR)
-
-    params_group_2bit = {'params': params_2_bit, 'lr': lr_2, 'betas': DEFAULT_BETAS}
-    params_group_4bit = {'params': params_4_bit, 'lr': lr_4, 'betas': DEFAULT_BETAS}
-    params_group_regular = {'params': params_regular, 'lr': args.lr_fp, 'betas': DEFAULT_BETAS}
-
-    # Optionally add extra settings from command line arguments
-    if args.galore:
-        galore_settings = {
-            'rank': args.rank,
-            'update_proj_gap': args.update_proj_gap,
-            'scale': args.galore_scale,
-            'proj_type': args.proj_type
-        }
-        params_group_2bit.update(galore_settings)
-        params_group_4bit.update(galore_settings)
-
-    param_groups = [
-        params_group_2bit,
-        params_group_4bit
-    ]
-    if not args.tune_qweight_only:
-        param_groups.append(params_group_regular)
-
-    return param_groups
+    return params_groups
 
 
 def main(args):
@@ -222,15 +154,33 @@ def main(args):
         "use_flash_attention_2": True if args.use_flash_attention_2 else None
     }
 
+    if args.eos_token is not None:
+        tokenizer_config["eos_token"] = args.eos_token
+
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,
         device_map='auto',
         seqlen=args.seqlen,
         model_config=pretrain_model_config,
-        requires_grad=True,
+        requires_grad=False,
     )
+    
+    config = LoraConfig(
+        r=64,
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj", "out_proj", "down_proj", "up_proj"],
+        lora_dropout=0.01,
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    
+    replace_peft_lora_model_with_gba_lora_model()
 
+    model = get_peft_model(model, config)
+    
+    model.print_trainable_parameters()
+     
     param_groups = create_param_groups(model, args)
 
     model.train()
@@ -249,15 +199,14 @@ def main(args):
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                 )
 
-    # Optimizer
-    if 'adamw8bit' in args.optimizer.lower():
-        optimizer = AdamW8bit(param_groups, weight_decay=args.weight_decay, dtype=str_to_torch_dtype(args.dtype))
-    elif 'diodemix' in args.optimizer.lower():
-        optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
+    optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
 
     optimizers = (optimizer, None)
-
-    # Trainer
+    
+    for name, param in model.named_parameters():
+        if "qweight" not in name:
+            param.requires_grad = True
+    
     trainer = SFTTrainer(
         model=model,
         args=train_args,
@@ -266,12 +215,14 @@ def main(args):
         optimizers=optimizers,
         max_seq_length=args.seqlen,
     )
-
+    
     trainer.train()
+
+    model.save_pretrained(args.save_dir)
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():
-        print("Warning: CUDA is required to run the model.")
+        print("Warning: CUDA is needed to run the model.")
         sys.exit(0)
 
     parser = setup_arg_parser()
