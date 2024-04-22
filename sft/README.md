@@ -50,11 +50,7 @@ Run the script as follows to fine-tune the quantized weights of the model on the
 The '--tune-qweight-only' parameter determines whether to fine-tune only the quantized weights or all weights, including non-quantized ones.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m sft.finetune --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --galore --tune-qweight-only
-```
-For more information about this parameter, please refer to:
-```bash
-python -m sft.finetune --help
+CUDA_VISIBLE_DEVICES=0 python -m sft.finetune --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --optimizer DiodeMix --tune-qweight-only --galore
 ```
 
 ### Parameter efficient finetuning
@@ -62,7 +58,7 @@ python -m sft.finetune --help
 ```bash
 CUDA_VISIBLE_DEVICES=0 python ...
 ```
-...
+
 
 ### Current Limitations
 
@@ -71,6 +67,6 @@ CUDA_VISIBLE_DEVICES=0 python ...
 
 
 ## License
-- The scripts 'adamw8bit.py' has been modified from [GaLore repository](https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py), which are released under the Apache 2.0 License.
-- The scripts 'bnb_optimizer.py' has been modified from [bitsandbytes repository](https://github.com/TimDettmers/bitsandbytes/blob/main/bitsandbytes/optim/optimizer.py), which are released under the MIT License.
+- The script 'optim/adamw8bit.py' has been modified from [GaLore repository](https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py), which is released under the Apache 2.0 License.
+- The script 'optim/bnb_optimizer.py' has been modified from [bitsandbytes repository](https://github.com/TimDettmers/bitsandbytes/blob/main/bitsandbytes/optim/optimizer.py), which is released under the MIT License.
 - We release our changes and additions to these files under the [Apache 2.0 License](../LICENSE).
