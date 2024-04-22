@@ -56,7 +56,7 @@ CUDA_VISIBLE_DEVICES=0 python -m sft.finetune --model GreenBitAI/Qwen-1.5-1.8B-l
 ### Parameter efficient finetuning
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python ...
+CUDA_VISIBLE_DEVICES=0 python -m sft.peft_lora --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --lr-fp 1e-6
 ```
 
 
