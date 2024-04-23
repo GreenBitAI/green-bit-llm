@@ -122,6 +122,12 @@ def setup_arg_parser():
         help="Optimizer to use: 1. DiodeMix, 2. AdamW8bit"
     )
     parser.add_argument("--weight_decay", type=float, default=0.0)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=4,
+        help="Batch size"
+    )
     return parser
 
 
@@ -243,7 +249,7 @@ def main(args):
                     output_dir=args.save_dir,
                     gradient_checkpointing=True,
                     # auto_find_batch_size=True,
-                    per_device_train_batch_size=4,
+                    per_device_train_batch_size=args.batch_size,
                     logging_steps=1,
                     save_steps=50,
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
