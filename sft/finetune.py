@@ -1,6 +1,5 @@
 import argparse
 import sys
-import os
 
 import torch
 
@@ -8,7 +7,7 @@ from transformers import PreTrainedTokenizer, TrainingArguments
 from datasets import load_dataset
 from trl import SFTTrainer
 
-from green_bit_llm.model import load
+from green_bit_llm import load, setup_shared_arg_parser
 
 import warnings
 
@@ -16,10 +15,14 @@ warnings.filterwarnings('ignore')
 
 try:
     from bitorch_engine.optim import DiodeMix
+    from bitorch_engine.layers.qlinear.nbit import MPQLinearBase
 except ModuleNotFoundError as e:
-    raise Exception("Error: Bitorch Engine optimizer (DiodeMix) are not available.")
+    raise Exception(f"Error occurred while importing Bitorch Engine module '{str(e)}'.")
 
 from .optim import AdamW8bit
+
+from .utils import str_to_torch_dtype
+
 
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0"
@@ -30,49 +33,15 @@ DEFAULT_LR_GALORE = 1e-4
 DEFAULT_LR_ADAMW8BIT = 5e-3
 DEFAULT_BETAS = (0.9, 0.999)
 
+
 def setup_arg_parser():
     """Set up and return the argument parser."""
-    parser = argparse.ArgumentParser(description="green-bit-llm finetune script")
+    parser = setup_shared_arg_parser("green-bit-llm finetune script")
     parser.add_argument(
         "--seed",
         type=int,
         default=DEFAULT_RANDOM_SEED,
         help="The random seed for data loader.",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=DEFAULT_MODEL_PATH,
-        help="The path to the local model directory or Hugging Face repo.",
-    )
-    parser.add_argument(
-        "--trust-remote-code",
-        action="store_true",
-        help="Enable trusting remote code for tokenizer",
-    )
-    parser.add_argument(
-        "--use-flash-attention-2",
-        action="store_true",
-        help="Enable using flash attention v2",
-    )
-    parser.add_argument(
-        "--seqlen",
-        type=int,
-        default=DEFAULT_SEQLEN,
-        help="Sequence length"
-    )
-    parser.add_argument(
-        "--save-dir",
-        type=str,
-        default="output/",
-        help="Specify save dir for eval results.",
-    )
-    parser.add_argument(
-        "--dtype",
-        type=str,
-        choices=["float", "half"],
-        default="half",
-        help="Dtype used in optimizer.",
     )
     # GaLore parameters
     parser.add_argument(
@@ -80,17 +49,11 @@ def setup_arg_parser():
         action="store_true",
         help="Enable using galore",
     )
-    parser.add_argument("--rank", type=int, default=128)
-    parser.add_argument("--update_proj_gap", type=int, default=200)
-    parser.add_argument("--galore_scale", type=float, default=0.25)
-    parser.add_argument("--proj_type", type=str, default="std")
+    parser.add_argument("--galore-rank", type=int, default=128)
+    parser.add_argument("--galore-update-proj-gap", type=int, default=200)
+    parser.add_argument("--galore-scale", type=float, default=0.25)
+    parser.add_argument("--galore-proj-type", type=str, default="std")
 
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        default="tatsu-lab/alpaca",
-        help="Dataset name for finetuning",
-    )
     # qweight related
     parser.add_argument(
         "--tune-qweight-only",
@@ -115,34 +78,11 @@ def setup_arg_parser():
         default=DEFAULT_LR,
         help="Learning rate for full-precision weight."
     )
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        default="DiodeMix",
-        help="Optimizer to use: 1. DiodeMix, 2. AdamW8bit"
-    )
-    parser.add_argument("--weight_decay", type=float, default=0.0)
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=4,
-        help="Batch size"
-    )
     return parser
 
 
-def str_to_torch_dtype(dtype: str):
-    if dtype is None:
-        return None
-    elif dtype == "float":
-        return torch.float
-    elif dtype == "half":
-        return torch.float16
-    else:
-        raise ValueError(f"Unsupported dtype: {dtype}")
-
-
 def get_learning_rate(lr_bit, galore, default_lr_galore, default_lr):
+    """Adaptivly get the learning rate value from the input setting parameters."""
     if lr_bit > 0:
         return lr_bit
     return default_lr_galore if galore else default_lr
@@ -163,8 +103,6 @@ def create_param_groups(model, args: argparse.ArgumentParser):
     """
     params_2_bit = []
     params_4_bit = []
-
-    from bitorch_engine.layers.qlinear.nbit import MPQLinearBase
 
     for module_name, module in model.named_modules():
         if issubclass(type(module), MPQLinearBase):
@@ -201,10 +139,10 @@ def create_param_groups(model, args: argparse.ArgumentParser):
     # Optionally add extra settings from command line arguments
     if args.galore:
         galore_settings = {
-            'rank': args.rank,
-            'update_proj_gap': args.update_proj_gap,
+            'rank': args.galore_rank,
+            'update_proj_gap': args.galore_update_proj_gap,
             'scale': args.galore_scale,
-            'proj_type': args.proj_type
+            'proj_type': args.galore_proj_type
         }
         params_group_2bit.update(galore_settings)
         params_group_4bit.update(galore_settings)
@@ -274,6 +212,9 @@ def main(args):
     )
 
     trainer.train()
+
+    model.save_pretrained(args.save_dir)
+
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():

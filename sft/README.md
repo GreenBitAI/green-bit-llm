@@ -62,7 +62,7 @@ CUDA_VISIBLE_DEVICES=0 python -m sft.peft_lora --model GreenBitAI/Qwen-1.5-1.8B-
 
 ### Current Limitations
 
-1. **Gradient clipping** is currently **unavailable** due to PyTorch's restrictions on the dtype of gradient tensors. The integer tensor type we use for qweight is not supported. We plan to address this issue gradually in the future.
+1. **Gradient clipping** is currently **unavailable** for Full-parameter finetuning due to PyTorch's restrictions on the dtype of gradient tensors. The integer tensor type we use for qweight is not supported. We plan to address this issue gradually in the future.
 2. **placeholder b**
 
 

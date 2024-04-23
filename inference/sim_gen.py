@@ -1,5 +1,4 @@
 import argparse
-import sys
 import os
 
 import torch
@@ -10,43 +9,26 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules
 
 from transformers import PreTrainedTokenizer
 
-from pathlib import Path
+from green_bit_llm import setup_shared_arg_parser
 
 # default value for arguments
-DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-0.5B-layer-mix-bpw-2.2"
 DEFAULT_PROMPT = None
 DEFAULT_MAX_TOKENS = 100
 DEFAULT_TEMP = 0.8
 DEFAULT_TOP_P = 0.95
-DEFAULT_SEQLEN = 2048
 DTYPE = torch.half
 
 
 def setup_arg_parser():
     """Set up and return the argument parser."""
-    parser = argparse.ArgumentParser(description="green-bit-llm inference script")
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=DEFAULT_MODEL_PATH,
-        help="The path to the local model directory or Hugging Face repo.",
-    )
+    parser = setup_shared_arg_parser("green-bit-llm inference script")
+
     parser.add_argument("--num-gpus", type=int, default=1)
     parser.add_argument(
         "--gpus",
         type=str,
         default='0',
         help="A single GPU like 1 or multiple GPUs like 0,2",
-    )
-    parser.add_argument(
-        "--trust-remote-code",
-        action="store_true",
-        help="Enable trusting remote code for tokenizer",
-    )
-    parser.add_argument(
-        "--use-flash-attention-2",
-        action="store_true",
-        help="Enable using flash attention v2",
     )
     parser.add_argument(
         "--eos-token",
@@ -70,9 +52,6 @@ def setup_arg_parser():
         "--top-p", type=float, default=DEFAULT_TOP_P, help="Sampling top-p"
     )
     parser.add_argument(
-        "--seqlen", type=int, default=DEFAULT_SEQLEN, help="Sequence length"
-    )
-    parser.add_argument(
         "--ignore-chat-template",
         action="store_true",
         help="Use the raw prompt without the tokenizer's chat template.",
@@ -92,6 +71,10 @@ def create_device_map(cuda_device_id):
 
 
 def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: str):
+    """
+    This function generates text based on a given prompt using a model and tokenizer.
+    It handles optional pre-processing with chat templates if specified in the arguments.
+    """
     if not args.ignore_chat_template and (
         hasattr(tokenizer, "apply_chat_template")
         and tokenizer.chat_template is not None
