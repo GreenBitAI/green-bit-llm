@@ -29,6 +29,20 @@ DTYPE = torch.half
 
 @torch.no_grad()
 def lm_evaluate(lm, args, logger):
+    """
+    Evaluates the language model (lm) according to the specified evaluation parameters in args.
+    This function handles both perplexity evaluation on various datasets and few-shot learning evaluation.
+
+    Parameters:
+        lm: The language model object configured for evaluation.
+        args: An object containing all necessary parameters and flags for evaluation, such as which datasets to use,
+              whether to evaluate perplexity or few-shot performance, sequence length, etc.
+        logger: A logging object used to record evaluation results and other important messages.
+
+    Returns:
+        A dictionary containing evaluation results, including perplexity values and few-shot evaluation metrics,
+        keyed by dataset or task name.
+    """
     results = {}
     lm.model = lm.model.to(lm.device)
 

@@ -2,26 +2,25 @@ import argparse
 import sys
 
 import torch
-import torch.nn as nn
 
 from transformers import PreTrainedTokenizer, TrainingArguments
 from datasets import load_dataset
 from trl import SFTTrainer
 from peft import PeftModel, LoraConfig, get_peft_model
 
-from green_bit_llm.model import load
+from green_bit_llm.model import load, setup_shared_arg_parser
 from .peft_utils.model import *
+from .optim import AdamW8bit
 
 import warnings
-
 warnings.filterwarnings('ignore')
 
-ENGINE_AVAILABLE = True
 try:
     from bitorch_engine.optim import DiodeMix
 except ModuleNotFoundError as e:
-    ENGINE_AVAILABLE = False
-    raise Exception("Error: Bitorch Engine optimizer (DiodeMix) are not available.")
+    raise Exception(f"Error occurred while importing Bitorch Engine module '{str(e)}'.")
+
+from .utils import str_to_torch_dtype
 
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0"
@@ -32,67 +31,15 @@ DEFAULT_LR_GALORE = 1e-4
 DEFAULT_LR_FP = 1e-6
 DEFAULT_BETAS = (0.9, 0.999)
 
+
 def setup_arg_parser():
     """Set up and return the argument parser."""
-    parser = argparse.ArgumentParser(description="green-bit-llm finetune script")
+    parser = setup_shared_arg_parser("green-bit-llm lora script")
     parser.add_argument(
         "--seed",
         type=int,
         default=DEFAULT_RANDOM_SEED,
         help="The random seed for data loader.",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default=DEFAULT_MODEL_PATH,
-        help="The path to the local model directory or Hugging Face repo.",
-    )
-    parser.add_argument(
-        "--cuda-device-id",
-        type=str,
-        default="0",
-        help="CUDA device IDs",
-    )
-    parser.add_argument(
-        "--trust-remote-code",
-        action="store_true",
-        help="Enable trusting remote code for tokenizer",
-    )
-    parser.add_argument(
-        "--use-flash-attention-2",
-        action="store_true",
-        help="Enable using flash attention v2",
-    )
-    parser.add_argument(
-        "--eos-token",
-        type=str,
-        default="<|im_end|>",
-        help="End of sequence token for tokenizer",
-    )
-    parser.add_argument(
-        "--seqlen",
-        type=int,
-        default=DEFAULT_SEQLEN,
-        help="Sequence length"
-    )
-    parser.add_argument(
-        "--save-dir",
-        type=str,
-        default="output/",
-        help="Specify save dir for eval results.",
-    )
-    parser.add_argument(
-        "--dtype",
-        type=str,
-        choices=["float", "half"],
-        default="half",
-        help="Dtype used in optimizer.",
-    )
-    parser.add_argument(
-        "--dataset",
-        type=str,
-        default="tatsu-lab/alpaca",
-        help="Dataset name for finetuning",
     )
     # qweight related
     parser.add_argument(
@@ -101,26 +48,10 @@ def setup_arg_parser():
         default=DEFAULT_LR_FP,
         help="Learning rate for full-precision weight."
     )
-    parser.add_argument("--optimizer", default="DiodeMix")
+    parser.add_argument("--lora-rank", type=int, default=64)
+    parser.add_argument("--lora-alpha", type=int, default=32)
+    parser.add_argument("--lora-dropout", type=float, default=0.01)
     return parser
-
-
-def str_to_torch_dtype(dtype: str):
-    if dtype is None:
-        return None
-    elif dtype == "float":
-        return torch.float
-    elif dtype == "half":
-        return torch.half
-    else:
-        raise ValueError(f"Unsupported dtype: {dtype}")
-
-
-def create_device_map(cuda_device_id):
-    ids = cuda_device_id.split(',')
-    # Create strings in the format "cuda:x" for each ID and put them into the collection
-    device_map = {f"cuda:{id}" for id in ids}
-    return device_map
 
 
 def create_param_groups(model, args: argparse.ArgumentParser):
@@ -154,9 +85,6 @@ def main(args):
         "use_flash_attention_2": True if args.use_flash_attention_2 else None
     }
 
-    if args.eos_token is not None:
-        tokenizer_config["eos_token"] = args.eos_token
-
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,
@@ -167,10 +95,10 @@ def main(args):
     )
     
     config = LoraConfig(
-        r=64,
-        lora_alpha=32,
+        r=args.lora_rank,
+        lora_alpha=args.lora_alpha,
         target_modules=["q_proj", "v_proj", "out_proj", "down_proj", "up_proj"],
-        lora_dropout=0.01,
+        lora_dropout=args.lora_dropout,
         bias="none",
         task_type="CAUSAL_LM",
     )
@@ -193,14 +121,17 @@ def main(args):
                     output_dir=args.save_dir,
                     gradient_checkpointing=True,
                     # auto_find_batch_size=True,
-                    per_device_train_batch_size=4,
+                    per_device_train_batch_size=args.batch_size,
                     logging_steps=1,
                     save_steps=50,
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                 )
 
-    optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
-
+    # Optimizer
+    if 'adamw8bit' in args.optimizer.lower():
+        optimizer = AdamW8bit(param_groups, weight_decay=args.weight_decay, dtype=str_to_torch_dtype(args.dtype))
+    elif 'diodemix' in args.optimizer.lower():
+        optimizer = DiodeMix(param_groups, dtype=str_to_torch_dtype(args.dtype))
     optimizers = (optimizer, None)
     
     for name, param in model.named_parameters():
@@ -219,6 +150,7 @@ def main(args):
     trainer.train()
 
     model.save_pretrained(args.save_dir)
+
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():

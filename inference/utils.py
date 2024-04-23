@@ -64,6 +64,7 @@ def get_context_length(config):
 
 
 def get_conversation_template(model_path: str) -> Conversation:
+    """Get and return a specific conversation template via checking its model path/model name."""
     for key, value in CONV_TEMP_DICT.items():
         # check if model path contains the value
         if value in model_path.lower():
@@ -74,6 +75,21 @@ def get_conversation_template(model_path: str) -> Conversation:
 def prepare_logits_processor(
     temperature: float, repetition_penalty: float, top_p: float, top_k: int
 ) -> LogitsProcessorList:
+    """
+    Creates and initializes a list of logits processors based on the specified parameters.
+    Each processor applies a different modification to the logits during text generation,
+    such as adjusting the sampling temperature, applying repetition penalties,
+    or enforcing top-p and top-k constraints.
+
+    Args:
+        temperature (float): Scaling factor for logits; a value of 1.0 means no scaling.
+        repetition_penalty (float): Penalty for repeated tokens to discourage repetition.
+        top_p (float): The cumulative probability threshold for nucleus sampling, filters out the smallest probabilities.
+        top_k (int): The number of highest probability logits to keep for top-k sampling.
+
+    Returns:
+        LogitsProcessorList: A configured list of logits processors.
+    """
     processor_list = LogitsProcessorList()
     # TemperatureLogitsWarper doesn't accept 0.0, 1.0 makes it a no-op so we skip two cases.
     if temperature >= 1e-5 and temperature != 1.0:
@@ -88,6 +104,7 @@ def prepare_logits_processor(
 
 
 def str_to_torch_dtype(dtype: str):
+    """Get torch dtype via parsing the dtype string."""
     import torch
 
     if dtype is None:
@@ -103,5 +120,6 @@ def str_to_torch_dtype(dtype: str):
 
 
 def is_chat_model(path):
+    """Distinguish if the input model name contains keywords like '-chat-' or '-instrct-'"""
     substrings = ["-chat-", "-instruct-"]
     return any(substring in path for substring in substrings)

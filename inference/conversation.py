@@ -1,6 +1,6 @@
 """
 Conversation prompt templates for cli chat demo.
-code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/conversation.py
+code based on: https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py
 """
 
 import base64
