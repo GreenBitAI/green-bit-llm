@@ -8,7 +8,7 @@ from datasets import load_dataset
 from trl import SFTTrainer
 from peft import PeftModel, LoraConfig, get_peft_model
 
-from green_bit_llm.model import load, setup_shared_arg_parser
+from green_bit_llm import load, setup_shared_arg_parser
 from .peft_utils.model import *
 from .optim import AdamW8bit
 
