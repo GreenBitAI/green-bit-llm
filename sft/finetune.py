@@ -124,12 +124,12 @@ def create_param_groups(model, args: argparse.ArgumentParser):
     lr_2 = get_learning_rate(
         args.lr_2bit,
         args.galore,
-        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer else DEFAULT_LR_GALORE,
+        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer.lower() else DEFAULT_LR_GALORE,
         DEFAULT_LR)
     lr_4 = get_learning_rate(
         args.lr_4bit,
         args.galore,
-        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer else DEFAULT_LR_GALORE,
+        DEFAULT_LR_ADAMW8BIT if 'adamw8bit' in args.optimizer.lower() else DEFAULT_LR_GALORE,
         DEFAULT_LR)
 
     params_group_2bit = {'params': params_2_bit, 'lr': lr_2, 'betas': DEFAULT_BETAS}
