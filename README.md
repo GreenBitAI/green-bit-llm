@@ -35,11 +35,11 @@ conda activate gbai_cuda_lm
 ## Usage
 ### Inference
 
-Please see the description of the [Inference package](inference/README.md) for details.
+Please see the description of the [Inference package](green_bit_llm/inference/README.md) for details.
 
 ### Evaluation
 
-Please see the description of the [Evaluation package](evaluation/README.md) for details.
+Please see the description of the [Evaluation package](green_bit_llm/evaluation/README.md) for details.
 
 ### sft
 
@@ -58,12 +58,12 @@ Please see the description of the [sft package](sft/README.md) for details.
 Run the simple generation script as follows:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m inference.sim_gen --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --max-tokens 100 --use-flash-attention-2 --ignore-chat-template
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.sim_gen --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --max-tokens 100 --use-flash-attention-2 --ignore-chat-template
 ```
 
 ### PPL Evaluation
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4_new,ptb
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4_new,ptb
 ```
 
 ### Run sft

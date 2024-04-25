@@ -11,7 +11,7 @@ from .lmclass import LMClass
 from .utils import create_logger, add_dict_to_json_file
 from .datautils import get_loaders
 
-from green_bit_llm.common.model import load
+from green_bit_llm.common import load
 from pathlib import Path
  
 from lm_eval import evaluator
