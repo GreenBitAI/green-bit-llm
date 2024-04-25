@@ -1,5 +1,8 @@
 import torch
 
+from colorama import init, Fore, Style
+init(autoreset=True)
+
 try:
     from bitorch_engine.layers.qlinear.nbit import MPQLinearBase
 except ModuleNotFoundError as e:
@@ -128,10 +131,10 @@ def create_param_groups(model, args, betas=(0.9, 0.999), lr_galore=1e-4, lr_adam
                 total_numel.append(param.numel())
         total_numel += qweight_trainable_numel
 
-        print(
-            f"Trainable params: {sum(trainable_numel):,d} || "
-            f"All params: {sum(total_numel):,d} || "
-            f"Trainable%: {100 * sum(trainable_numel) / sum(total_numel):.4f}"
+        print(Style.BRIGHT + Fore.CYAN +
+            f"Info: trainable params: {sum(trainable_numel):,d} || "
+            f"all params: {sum(total_numel):,d} || "
+            f"trainable%: {100 * sum(trainable_numel) / sum(total_numel):.4f}"
         )
     else:
         raise Exception("Error: invalid use case in creating param_group.")
