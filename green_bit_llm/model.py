@@ -28,6 +28,7 @@ init(autoreset=True)
 
 STRATEGY_FILE_NAME = "quant_strategy.json"
 MODEL_TYPE_QWEN2 = "qwen2"
+STRATEGY_FILE_JSON_ROOT = "measurement"
 
 
 def engine_layer_prepare(model: torch.nn.Module):
@@ -50,10 +51,13 @@ def apply_quant_strategy(name_attr: str, quant_strategy: Dict):
     Apply quantization strategy based on the layer's name and the provided strategy.
     """
     strategy = None
-    for key in ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj']:
+    for key in ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj', 'qkv_proj', 'gate_up_proj']:
         if key in name_attr:
-            strategy = quant_strategy[key]
-            break
+            try:
+                strategy = quant_strategy[key]
+                break
+            except KeyError:
+                pass
     return strategy
 
 
@@ -159,7 +163,7 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
         strategy_path = model_path / STRATEGY_FILE_NAME
         try:
             with open(strategy_path, "r") as file:
-                strategy = json.load(file)["measurement"]
+                strategy = json.load(file)[STRATEGY_FILE_JSON_ROOT]
         except FileNotFoundError:
             raise FileNotFoundError(f"Error: Strategy config file not found in {model_path}")
 
