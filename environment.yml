@@ -8,15 +8,15 @@ dependencies:
   - pytorch::pytorch>=2.0
   - pip:
       - sentencepiece
-      - huggingface_hub
+      - huggingface-hub
       - transformers>=4.38.0
       - accelerate
       - colorama
       - flash-attn
       - datasets
-      - lm_eval==0.3.0
+      - lm-eval==0.3.0
       - termcolor
       - pillow
       - requests
-      - prompt_toolkit
+      - prompt-toolkit
       - rich
