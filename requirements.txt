@@ -4,11 +4,11 @@ datasets
 torch>=2.0.0
 sentencepiece
 transformers>=4.38.0
-huggingface_hub
+huggingface-hub
 flash-attn
-lm_eval==0.3.0
+lm-eval==0.3.0
 termcolor
 pillow
 requests
-prompt_toolkit
+prompt-toolkit
 rich
