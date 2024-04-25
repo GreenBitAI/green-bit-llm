@@ -43,7 +43,7 @@ Please see the description of the [Evaluation package](green_bit_llm/evaluation/
 
 ### sft
 
-Please see the description of the [sft package](sft/README.md) for details.
+Please see the description of the [sft package](green_bit_llm/sft/README.md) for details.
 
 ## Requirements
 
