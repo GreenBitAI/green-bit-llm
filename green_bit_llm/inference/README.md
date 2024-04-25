@@ -59,4 +59,4 @@ This launches a rich command-line interface for interactive chatting.
 
 ## License
 - The scripts `conversation.py`, `chat_base.py`, and `chat_cli.py` have been modified from their original versions found in [FastChat-serve](https://github.com/lm-sys/FastChat/tree/main/fastchat/serve), which are released under the [Apache 2.0 License](https://github.com/lm-sys/FastChat/tree/main/LICENSE). 
-- We release our changes and additions to these files under the [Apache 2.0 License](../LICENSE).
+- We release our changes and additions to these files under the [Apache 2.0 License](../../LICENSE).
