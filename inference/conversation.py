@@ -476,10 +476,11 @@ register_conv_template(
     Conversation(
         name="phi-3",
         system_template="<|system|>\n{system_message}",
+        system_message="You are a helpful assistant.",
         roles=("<|user|>", "<|assistant|>"),
         sep_style=SeparatorStyle.CHATML,
         sep="</s>",
-        stop_token_ids=[32000], # "<|endoftext|>"
+        stop_token_ids=[32007], # "<|end|>"
         stop_str="</s>",
     )
 )
