@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 package_dir = Path(__file__).parent / "green_bit_llm"
 with open(Path(__file__).parent / "requirements.txt") as fid:
@@ -22,6 +22,6 @@ setup(
     url="https://github.com/GreenBitAI/green-bit-llm",
     license="Apache-2.0",
     install_requires=requirements,
-    packages=["green_bit_llm", "green_bit_llm.common", "green_bit_llm.evaluation", "green_bit_llm.inference", "green_bit_llm.sft"],
+    packages=find_packages(),
     python_requires=">=3.9",
 )
