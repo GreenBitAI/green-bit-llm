@@ -4,7 +4,6 @@ Code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/ser
 """
 import argparse
 import os
-import sys
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules.module')
 
@@ -12,6 +11,11 @@ import torch
 
 # Add the parent directory to sys.path
 from .utils import str_to_torch_dtype, is_chat_model
+
+try:
+    from .chat_base import chat_loop, SimpleChatIO, RichChatIO
+except Exception:
+    raise Exception("Error occurred when import chat loop, ChatIO classes.")
 
 
 def main(args):
@@ -26,11 +30,6 @@ def main(args):
 
     if not torch.cuda.is_available():
         raise Exception("Warning: CUDA is needed to run the model.")
-
-    try:
-        from .chat_base import chat_loop, SimpleChatIO, RichChatIO
-    except Exception:
-        raise Exception("Error occurred when import chat loop, ChatIO classes.")
 
     if args.style == "simple":
         chatio = SimpleChatIO(args.multiline)

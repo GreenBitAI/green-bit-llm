@@ -7,7 +7,8 @@ from transformers import PreTrainedTokenizer, TrainingArguments
 from datasets import load_dataset
 from trl import SFTTrainer
 
-from green_bit_llm import load, setup_shared_arg_parser
+from green_bit_llm.common import load
+from green_bit_llm.args_parser import setup_shared_arg_parser
 
 import warnings
 

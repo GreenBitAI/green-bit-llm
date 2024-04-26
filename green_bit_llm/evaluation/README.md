@@ -29,12 +29,12 @@ Example evaluation scripts for the GreenBitAI family of low-bit models.
 
 ### PPL Evaluation
 ```bash
-python -m evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4_new,ptb
+python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4_new,ptb
 ```
 
 ### Few-Shot Evaluation
 ```bash
-python -m evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --batch-size 16 --few-shot-tasks wic,boolq --eval-few-shot
+python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --batch-size 16 --few-shot-tasks wic,boolq --eval-few-shot
 ```
 
 

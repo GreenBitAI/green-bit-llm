@@ -43,7 +43,7 @@ pip install pillow requests prompt_toolkit rich
 Run the simple generation script as follows:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m inference.sim_gen --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --max-tokens 100 --use-flash-attention-2 --ignore-chat-template
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.sim_gen --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --max-tokens 100 --use-flash-attention-2 --ignore-chat-template
 ```
 
 This command generates text based on the provided prompt using the specified GreenBitAI model.
@@ -53,10 +53,10 @@ This command generates text based on the provided prompt using the specified Gre
 To start the chat interface:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m inference.chat_cli --model GreenBitAI/yi-6b-chat-w4a16g256 --debug --use-flash-attention-2 --multiline --mouse
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.chat_cli --model-path GreenBitAI/yi-6b-chat-w4a16g256 --debug --use-flash-attention-2 --multiline --mouse
 ```
 This launches a rich command-line interface for interactive chatting.
 
 ## License
 - The scripts `conversation.py`, `chat_base.py`, and `chat_cli.py` have been modified from their original versions found in [FastChat-serve](https://github.com/lm-sys/FastChat/tree/main/fastchat/serve), which are released under the [Apache 2.0 License](https://github.com/lm-sys/FastChat/tree/main/LICENSE). 
-- We release our changes and additions to these files under the [Apache 2.0 License](../LICENSE).
+- We release our changes and additions to these files under the [Apache 2.0 License](../../LICENSE).

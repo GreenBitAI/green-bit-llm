@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 import json
-import sys
 
 import torch
 import torch.nn as nn

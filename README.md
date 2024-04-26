@@ -1,6 +1,6 @@
 # Green-Bit-LLM
 
-A toolkit for fine-tuning, inferencing, and evaluating GreenBitAI's LLMs.
+A toolkit for fine-tuning, inferencing, and evaluating GreenBitAI's low-bit LLMs.
 
 ## Introduction
  

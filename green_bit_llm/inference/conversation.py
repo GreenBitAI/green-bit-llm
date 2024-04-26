@@ -7,7 +7,7 @@ import base64
 import dataclasses
 from enum import auto, IntEnum
 from io import BytesIO
-from typing import List, Any, Dict, Union, Tuple
+from typing import List, Dict, Union, Tuple
 
 
 class SeparatorStyle(IntEnum):
