@@ -65,6 +65,7 @@ class AdamW8bit(Optimizer2State):
                     projector = state["projector"]
                     grad = projector.project(grad, state["step"])
 
+                saved_data = None
                 if "rank" in group or isinstance(p, MPQWeightParameter):
                     # suboptimal implementation
                     # In the implementation mentioned, the author sets the variable p (representing model parameters) to zero,
@@ -91,6 +92,7 @@ class AdamW8bit(Optimizer2State):
                     group['weight_decay'] = group['weight_decay_saved']
                     del group['weight_decay_saved']
 
+                w_unpacked = None
                 # GaLore Projection Back
                 if "rank" in group:
                     # now the p.data is actually: -norm_grad*lr
@@ -129,11 +131,9 @@ class AdamW8bit(Optimizer2State):
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
-
         if self.is_paged:
             # all paged operation are asynchronous, we need
             # to sync to make sure all tensors are in the right state
             torch.cuda.synchronize()
-
 
         return loss
