@@ -36,6 +36,12 @@ def setup_shared_arg_parser(parser_name="Shared argument parser for green-bit-ll
         help="Specify save dir for eval results.",
     )
     parser.add_argument(
+        "--save-step",
+        type=int,
+        default=500,
+        help="Specify how many steps to save a checkpoint.",
+    )
+    parser.add_argument(
         "--dtype",
         type=str,
         choices=["float", "half"],

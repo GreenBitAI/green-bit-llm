@@ -113,7 +113,7 @@ def main(args):
                     # auto_find_batch_size=True,
                     per_device_train_batch_size=args.batch_size,
                     logging_steps=1,
-                    save_steps=50,
+                    save_steps=args.save_step,
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                 )
 

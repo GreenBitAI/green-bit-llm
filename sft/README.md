@@ -3,8 +3,8 @@
 ## Overview
 
 This package demonstrates the capabilities of [GreenBitAI's low-bit large language models (LLMs)](https://huggingface.co/GreenBitAI) through two main features:
-1. Full-parameter finetuning using quantized LLMs.
-2. Parameter efficient finetuning
+1. Full-parameter fine-tuning using quantized LLMs.
+2. Parameter efficient fine-tuning
 
 
 ## Installation
@@ -44,7 +44,7 @@ pip install bitsandbytes, galore-torch
 
 ## Usage
 
-### Full-parameter finetuning
+### Full-parameter fine-tuning
 
 Run the script as follows to fine-tune the quantized weights of the model on the target dataset. 
 The '--tune-qweight-only' parameter determines whether to fine-tune only the quantized weights or all weights, including non-quantized ones.
@@ -53,7 +53,7 @@ The '--tune-qweight-only' parameter determines whether to fine-tune only the qua
 CUDA_VISIBLE_DEVICES=0 python -m sft.finetune --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --optimizer DiodeMix --tune-qweight-only --galore
 ```
 
-### Parameter efficient finetuning
+### Parameter efficient fine-tuning
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python -m sft.peft_lora --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --lr-fp 1e-6
@@ -62,7 +62,7 @@ CUDA_VISIBLE_DEVICES=0 python -m sft.peft_lora --model GreenBitAI/Qwen-1.5-1.8B-
 
 ### Current Limitations
 
-1. **Gradient clipping** is currently **unavailable** for Full-parameter finetuning due to PyTorch's restrictions on the dtype of gradient tensors. The integer tensor type we use for qweight is not supported. We plan to address this issue gradually in the future.
+1. **Gradient clipping** is currently **unavailable** for Full-parameter fine-tuning due to PyTorch's restrictions on the dtype of gradient tensors. The integer tensor type we use for qweight is not supported. We plan to address this issue gradually in the future.
 2. **placeholder b**
 
 
