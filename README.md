@@ -16,13 +16,13 @@ Additionally, you can use our provided **evaluation tools** to validate the mode
 
 ## Demo
 
-Full parameter fine-tuning of the LLaMA-3 8B model using just a single GTX 3090 GPU with 24GB of graphics memory:
+Full parameter fine-tuning of the LLaMA-3 8B model using a single GTX 3090 GPU with 24GB of graphics memory:
 
-![Loading Image ...](assets/demo_llama3_8B_fpft.gif)
+<img src="assets/demo_llama3_8B_fpft.gif" width="960">
 
-PEFT of the LLaMA-3 8B model using just a single GTX 3090 GPU with 24GB of graphics memory:
+PEFT of the 01-Yi 34B model using a single GTX 3090 GPU with 24GB of graphics memory:
 
-![Loading Image ...](assets/demo_llama3_8B_fpft.gif)
+<img src="assets/demo_yi_34B_peft.gif" width="960">
 
 ## Installation
 
