@@ -2,6 +2,8 @@ from lm_eval.base import BaseLM
 import torch.nn.functional as F
 import torch
 
+from colorama import init, Fore, Style
+init(autoreset=True)
 
 class LMClass(BaseLM):
     """
@@ -33,7 +35,7 @@ class LMClass(BaseLM):
         self.seqlen = self.model.config.max_position_embeddings
         self.model.eval()
         self.vocab_size = self.tokenizer.vocab_size
-        print("vocab size: ", self.vocab_size)
+        print(Style.BRIGHT + Fore.CYAN + "Info: vocab size: ", self.vocab_size)
 
     @property
     def eot_token(self) -> str:
@@ -57,7 +59,7 @@ class LMClass(BaseLM):
     @property
     def max_gen_toks(self):
         # Returns the maximum number of tokens that can be generated in one go
-        print("max_gen_toks fn")
+        print(Style.BRIGHT + Fore.CYAN + "Info: max_gen_toks fn")
         return 256
 
     @property

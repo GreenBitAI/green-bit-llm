@@ -3,6 +3,9 @@ from datasets import load_dataset
 import torch
 import random
 
+from colorama import init, Fore, Style
+init(autoreset=True)
+
 def get_wikitext2(nsamples, seed, seqlen, model):
     """
     Prepares data loaders for the Wikitext-2 dataset for training and testing.
@@ -16,7 +19,7 @@ def get_wikitext2(nsamples, seed, seqlen, model):
     Returns:
         tuple: A tuple containing the training loader and tokenized test data.
     """
-    print("Info: get_wikitext2")
+    print(Style.BRIGHT + Fore.CYAN + "Info: get_wikitext2")
     traindata = load_dataset('wikitext', 'wikitext-2-raw-v1', split='train', cache_dir="./cache/")
     testdata = load_dataset('wikitext', 'wikitext-2-raw-v1', split='test', cache_dir="./cache/")
 
@@ -50,7 +53,7 @@ def get_ptb(nsamples, seed, seqlen, model):
     Returns:
         tuple: A tuple containing the training loader and tokenized validation data.
     """
-    print("Info: get_ptb")
+    print(Style.BRIGHT + Fore.CYAN + "Info: get_ptb")
     traindata = load_dataset('ptb_text_only', 'penn_treebank', split='train', cache_dir="./cache/")
     valdata = load_dataset('ptb_text_only', 'penn_treebank', split='validation', cache_dir="./cache/")
 
@@ -84,7 +87,7 @@ def get_c4(nsamples, seed, seqlen, model):
     Returns:
         tuple: A tuple containing training data loader and validation data tensor.
     """
-    print("Info: get_c4")
+    print(Style.BRIGHT + Fore.CYAN + "Info: get_c4")
     traindata = load_dataset(
         'allenai/c4', 'allenai--c4',
         data_files={'train': 'en/c4-train.00000-of-01024.json.gz'},
@@ -147,7 +150,7 @@ def get_ptb_new(nsamples, seed, seqlen, model):
         tuple: A tuple containing the training loader (list of tuples with input IDs and target IDs) and
                the tokenized test data.
     """
-    print("Info: get_ptb_new")
+    print(Style.BRIGHT + Fore.CYAN + "Info: get_ptb_new")
     traindata = load_dataset('ptb_text_only', 'penn_treebank', split='train')
     testdata = load_dataset('ptb_text_only', 'penn_treebank', split='test')
 
@@ -184,7 +187,7 @@ def get_c4_new(nsamples, seed, seqlen, model):
            - trainloader (list of tuples): A list where each tuple contains input ids and target tensors for training.
            - valenc (torch.Tensor): A tensor containing the tokenized validation data.
     """
-    print("Info: get_c4_new")
+    print(Style.BRIGHT + Fore.CYAN + "Info: get_c4_new")
     traindata = load_dataset(
         'allenai/c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train'
     )
