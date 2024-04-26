@@ -4,7 +4,6 @@ Code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/ser
 """
 import argparse
 import os
-import sys
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules.module')
 
@@ -12,6 +11,11 @@ import torch
 
 # Add the parent directory to sys.path
 from .utils import str_to_torch_dtype, is_chat_model
+
+try:
+    from .chat_base import chat_loop, SimpleChatIO, RichChatIO
+except Exception:
+    raise Exception("Error occurred when import chat loop, ChatIO classes.")
 
 
 def main(args):
@@ -27,11 +31,6 @@ def main(args):
     if not torch.cuda.is_available():
         raise Exception("Warning: CUDA is needed to run the model.")
 
-    try:
-        from .chat_base import chat_loop, SimpleChatIO, RichChatIO
-    except Exception:
-        raise Exception("Error occurred when import chat loop, ChatIO classes.")
-
     if args.style == "simple":
         chatio = SimpleChatIO(args.multiline)
     elif args.style == "rich":
@@ -40,7 +39,7 @@ def main(args):
         raise ValueError(f"Invalid style for console: {args.style}")
 
     # check if a chat model selected?
-    if not is_chat_model(args.model_path.lower()):
+    if not is_chat_model(args.model.lower()):
         raise Exception("Invalid model path: The provided model is not a chat model. "
                         "A valid chat model is required to establish the chat interface.")
 
@@ -57,7 +56,7 @@ def main(args):
     # chat
     try:
         chat_loop(
-            args.model_path,
+            args.model,
             tokenizer_config,
             pretrain_model_config,
             args.seqlen,
@@ -80,7 +79,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model-path",
+        "--model",
         type=str,
         default="GreenBitAI/Mistral-Instruct-7B-v0.2-layer-mix-bpw-2.2",
         help="The path to the weights. This can be a local folder or a Hugging Face repo ID.",

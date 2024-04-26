@@ -43,7 +43,7 @@ pip install pillow requests prompt_toolkit rich
 Run the simple generation script as follows:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.sim_gen --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --max-tokens 100 --use-flash-attention-2 --ignore-chat-template
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.sim_gen --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --max-tokens 100 --use-flash-attention-2 --ignore-chat-template --prompt "The meaning of life is"
 ```
 
 This command generates text based on the provided prompt using the specified GreenBitAI model.
@@ -53,7 +53,7 @@ This command generates text based on the provided prompt using the specified Gre
 To start the chat interface:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.chat_cli --model-path GreenBitAI/yi-6b-chat-w4a16g256 --debug --use-flash-attention-2 --multiline --mouse
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.chat_cli --model GreenBitAI/Qwen-1.5-1.8B-Chat-layer-mix-bpw-2.2 --use-flash-attention-2 --multiline --mouse
 ```
 This launches a rich command-line interface for interactive chatting.
 

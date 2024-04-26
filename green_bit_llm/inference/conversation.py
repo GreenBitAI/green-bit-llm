@@ -1,13 +1,13 @@
 """
 Conversation prompt templates for cli chat demo.
-code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/conversation.py
+code based on: https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py
 """
 
 import base64
 import dataclasses
 from enum import auto, IntEnum
 from io import BytesIO
-from typing import List, Any, Dict, Union, Tuple
+from typing import List, Dict, Union, Tuple
 
 
 class SeparatorStyle(IntEnum):
@@ -21,6 +21,7 @@ class SeparatorStyle(IntEnum):
     ADD_NEW_LINE_SINGLE = auto()
     LLAMA2 = auto()
     CHATML = auto()
+    LLAMA3 = auto()
 
 
 IMAGE_PLACEHOLDER_STR = "$$<image>$$"
@@ -123,6 +124,19 @@ class Conversation:
                         ret += tag + " " + message + seps[i % 2]
                 else:
                     ret += tag
+            return ret
+        elif self.sep_style == SeparatorStyle.LLAMA3:
+            ret = "<|begin_of_text|>"
+            if self.system_message:
+                ret += system_prompt
+            else:
+                ret += ""
+            for i, (role, message) in enumerate(self.messages):
+                if message:
+                    ret += f"<|start_header_id|>{role}<|end_header_id|>\n\n"
+                    ret += f"{message.strip()}<|eot_id|>"
+                else:
+                    ret += f"<|start_header_id|>{role}<|end_header_id|>\n\n"
             return ret
         elif self.sep_style == SeparatorStyle.CHATML:
             ret = "" if system_prompt == "" else system_prompt + self.sep + "\n"
@@ -457,3 +471,31 @@ register_conv_template(
     )
 )
 
+# Phi-3 template
+register_conv_template(
+    Conversation(
+        name="phi-3",
+        system_template="<|system|>\n{system_message}",
+        system_message="You are a helpful assistant.",
+        roles=("<|user|>", "<|assistant|>"),
+        sep_style=SeparatorStyle.CHATML,
+        sep="</s>",
+        stop_token_ids=[32007], # "<|end|>"
+        stop_str="</s>",
+    )
+)
+
+# llama3 template
+# reference: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct/blob/main/tokenizer_config.json
+# reference: https://github.com/meta-llama/llama3/blob/0cee08ec68f4cfc0c89fe4a9366d82679aaa2a66/llama/tokenizer.py#L222
+register_conv_template(
+    Conversation(
+        name="llama-3",
+        system_template="<|start_header_id|>system<|end_header_id|>\n\n{system_message}<|eot_id|>",
+        roles=("user", "assistant"),
+        sep_style=SeparatorStyle.LLAMA3,
+        sep="",
+        stop_str="<|eot_id|>",
+        stop_token_ids=[128001, 128009],
+    )
+)
