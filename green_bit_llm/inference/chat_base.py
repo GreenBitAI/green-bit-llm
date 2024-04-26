@@ -1,15 +1,13 @@
 """
 Base classes and functions for cli chat demo.
-Code based on: https://github.com/yanghaojin/FastChat/blob/greenbit/fastchat/serve/inference.py
+Code based on: https://github.com/lm-sys/FastChat/blob/main/fastchat/serve/inference.py
 """
 import re
 import gc
-import sys
 import abc
 import json
 import os
 import time
-from pathlib import Path
 from typing import Optional, Dict, Iterable
 
 from prompt_toolkit import PromptSession

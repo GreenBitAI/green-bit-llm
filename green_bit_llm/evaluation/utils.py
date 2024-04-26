@@ -5,7 +5,15 @@ import time
 import logging
 from termcolor import colored
 
+
 def pattern_match(patterns, source_list):
+    """
+    Function to find unique matching patterns from a source list.
+    Args:
+        patterns: list of pattern strings to match.
+    Returns:
+        list: list of task name
+    """
     task_names = set()
     for pattern in patterns:
             task_names.add(pattern)
@@ -16,8 +24,9 @@ def add_dict_to_json_file(file_path, new_data):
     Update a JSON file based on the top-level keys in new_data. If the key exists, it replaces the existing content
     under that key. If it doesn't exist, it adds the new key with its value.
 
-    :param file_path: Path to the JSON file.
-    :param new_data: Dictionary to add or update in the file.
+    Args:
+    file_path: Path to the JSON file.
+    new_data: Dictionary to add or update in the file.
     """
     # Initialize or load existing data
     if os.path.exists(file_path) and os.stat(file_path).st_size > 0:
@@ -34,6 +43,17 @@ def add_dict_to_json_file(file_path, new_data):
         json.dump(existing_data, file, indent=4)
 
 def create_logger(output_dir, dist_rank=0, name=''):
+    """
+    Creates and configures a logger with console and file handlers.
+
+    Args:
+        output_dir (str): Directory where the log files will be stored.
+        dist_rank (int): Rank of the process in distributed training. Only the master process (rank 0) will output to the console.
+        name (str): Name of the logger, used to differentiate output if multiple loggers are used.
+
+    Returns:
+        logger: Configured logger object.
+    """
     # create logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
