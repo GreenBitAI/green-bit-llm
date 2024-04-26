@@ -169,7 +169,7 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
 
     # Initialize model with empty weights and load configuration
     with accelerate.init_empty_weights():
-        config = AutoConfig.from_pretrained(model_path)
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
         model = AutoModelForCausalLM.from_pretrained(model_path, config=config, torch_dtype=dtype, **model_config).eval()
 
         # Quantize layers as necessary
