@@ -106,12 +106,15 @@ def create_param_groups(model, args, betas=(0.9, 0.999), lr_galore=1e-4, lr_adam
             args.lr_2bit,
             args.galore,
             lr_adamw8b if 'adamw8bit' in args.optimizer.lower() else lr_galore,
-            lr_default)
+            1e-3 if 'adamw8bit' in args.optimizer.lower() else lr_default
+        )
+
         lr_4 = get_learning_rate(
             args.lr_4bit,
             args.galore,
             lr_adamw8b if 'adamw8bit' in args.optimizer.lower() else lr_galore,
-            lr_default)
+            1e-3 if 'adamw8bit' in args.optimizer.lower() else lr_default
+        )
 
         params_group_2bit = {'params': params_2_bit, 'lr': lr_2, 'betas': betas}
         params_group_4bit = {'params': params_4_bit, 'lr': lr_4, 'betas': betas}
@@ -140,6 +143,7 @@ def create_param_groups(model, args, betas=(0.9, 0.999), lr_galore=1e-4, lr_adam
     else:
         raise Exception("Error: invalid use case in creating param_group.")
 
+    # print out trainable params info
     print(Style.BRIGHT + Fore.CYAN +
         f"Info: trainable params: {sum(trainable_numel):,d} || "
         f"all params: {sum(total_numel):,d} || "
@@ -147,65 +151,6 @@ def create_param_groups(model, args, betas=(0.9, 0.999), lr_galore=1e-4, lr_adam
     )
 
     return param_groups
-
-
-def num_parameters(self, only_trainable: bool = False, exclude_embeddings: bool = False) -> int:
-    """
-    Get number of (optionally, trainable or non-embeddings) parameters in the module.
-
-    Args:
-        only_trainable (`bool`, *optional*, defaults to `False`):
-            Whether or not to return only the number of trainable parameters
-
-        exclude_embeddings (`bool`, *optional*, defaults to `False`):
-            Whether or not to return only the number of non-embeddings parameters
-
-    Returns:
-        `int`: The number of parameters.
-    """
-
-    if exclude_embeddings:
-        embedding_param_names = [
-            f"{name}.weight" for name, module_type in self.named_modules() if isinstance(module_type, nn.Embedding)
-        ]
-        total_parameters = [
-            parameter for name, parameter in self.named_parameters() if name not in embedding_param_names
-        ]
-    else:
-        total_parameters = list(self.parameters())
-
-    total_numel = []
-    is_loaded_in_4bit = getattr(self, "is_loaded_in_4bit", False)
-
-    if is_loaded_in_4bit:
-        if is_bitsandbytes_available():
-            import bitsandbytes as bnb
-        else:
-            raise ValueError(
-                "bitsandbytes is not installed but it seems that the model has been loaded in 4bit precision, something went wrong"
-                " make sure to install bitsandbytes with `pip install bitsandbytes`. You also need a GPU. "
-            )
-
-    for param in total_parameters:
-        if param.requires_grad or not only_trainable:
-            # For 4bit models, we need to multiply the number of parameters by 2 as half of the parameters are
-            # used for the 4bit quantization (uint8 tensors are stored)
-            if is_loaded_in_4bit and isinstance(param, bnb.nn.Params4bit):
-                if hasattr(param, "element_size"):
-                    num_bytes = param.element_size()
-                elif hasattr(param, "quant_storage"):
-                    num_bytes = param.quant_storage.itemsize
-                else:
-                    num_bytes = 1
-                total_numel.append(param.numel() * 2 * num_bytes)
-            else:
-                total_numel.append(param.numel())
-
-    print(
-        f"trainable params: {trainable_params:,d} || "
-        f"all params: {all_param:,d} || "
-        f"trainable%: {100 * trainable_params / all_param:.4f}"
-    )
 
 
 

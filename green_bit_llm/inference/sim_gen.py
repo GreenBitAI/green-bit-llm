@@ -1,4 +1,3 @@
-import argparse
 import os
 
 import torch
@@ -9,7 +8,8 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules
 
 from transformers import PreTrainedTokenizer
 
-from green_bit_llm import setup_shared_arg_parser
+from green_bit_llm.common import generate, load
+from green_bit_llm.args_parser import setup_shared_arg_parser
 
 # default value for arguments
 DEFAULT_PROMPT = None
@@ -64,12 +64,6 @@ def setup_arg_parser():
     return parser
 
 
-def create_device_map(cuda_device_id):
-    # TODO: create device map strategy
-    #return device_map
-    raise NotImplementedError('device map strategy not implemented yet!')
-
-
 def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: str):
     """
     This function generates text based on a given prompt using a model and tokenizer.
@@ -86,7 +80,6 @@ def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: 
     else:
         prompt = prompt
 
-    from green_bit_llm import generate
     generate(
         model,
         tokenizer,
@@ -120,7 +113,6 @@ def main(args):
     if args.eos_token is not None:
         tokenizer_config["eos_token"] = args.eos_token
 
-    from green_bit_llm import load
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,

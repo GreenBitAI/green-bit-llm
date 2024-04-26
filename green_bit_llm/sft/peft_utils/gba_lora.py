@@ -204,6 +204,7 @@ class GBALoraLinear(torch.nn.Module, GBALoraLayer):
         rep = super().__repr__()
         return "lora." + rep
 
+
 def dispatch_gba(target: torch.nn.Module, adapter_name: str, **kwargs):
     new_module = None
 

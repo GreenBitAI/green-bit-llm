@@ -17,6 +17,7 @@ def check_engine_available()-> bool:
         from bitorch_engine.layers.qlinear.nbit.cuda import MPQLinearCuda, MBWQLinearCuda
     except ModuleNotFoundError as e:
         print(f"Error: Module not found: {e}.")
+        return False
     return True
 
 
