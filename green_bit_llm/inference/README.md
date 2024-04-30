@@ -10,31 +10,8 @@ Both tools are designed for efficient natural language processing, enabling quic
 
 ## Installation
 
-### Prerequisites
-Ensure you have Python installed on your machine. It's recommended to use a virtual environment for Python projects to manage dependencies efficiently.
-
-### Installing Dependencies
-
-Install green-bit-llm package using pip:
-
-```bash
-pip install green-bit-llm
-```
-
-or from source:
-
-```bash
-git clone https://github.com/GreenBitAI/green-bit-llm.git
-cd green-bit-llm
-pip install -r requirements.txt
-```
-Ensure your system has Python3 and pip installed before proceeding.
-
-For the CLI-based chat demo, install the following additional libraries:
-
-```bash
-pip install pillow requests prompt_toolkit rich
-```
+Please follow the [main installation instructions](../../README.md#installation) for how to install the packages required to run this inference package.
+Further packages should not be required.
 
 ## Usage
 

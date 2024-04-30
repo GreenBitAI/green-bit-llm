@@ -9,27 +9,8 @@ This package demonstrates the capabilities of [GreenBitAI's low-bit large langua
 
 ## Installation
 
-### Prerequisites
-Ensure you have Python installed on your machine. It's recommended to use a virtual environment for Python projects to manage dependencies efficiently.
-
-### Installing Dependencies
-
-Install green-bit-llm package using pip:
-
-```bash
-pip install green-bit-llm
-```
-
-or from source:
-
-```bash
-git clone https://github.com/GreenBitAI/green-bit-llm.git
-cd green-bit-llm
-pip install -r requirements.txt
-```
-Ensure your system has Python3 and pip installed before proceeding.
-
-Install the following additional libraries:
+Please follow the [main installation instructions](../../README.md#installation) for how to install the packages required to run this inference package.
+Afterward, install the following additional libraries:
 
 ```bash
 pip install trl
