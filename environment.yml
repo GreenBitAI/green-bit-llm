@@ -12,7 +12,6 @@ dependencies:
       - transformers>=4.38.0
       - accelerate
       - colorama
-      - flash-attn
       - datasets
       - lm-eval==0.3.0
       - termcolor
