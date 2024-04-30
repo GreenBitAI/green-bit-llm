@@ -39,7 +39,7 @@ pip install -U git+https://github.com/huggingface/peft.git
 If you want to use a **8-bit customized optimizer** with the gradient low-rank projection for maximizing memory savings, you will also need to install the following package:
 
 ```bash
-pip install bitsandbytes, galore-torch
+pip install bitsandbytes galore-torch
 ```
 
 ## Usage
