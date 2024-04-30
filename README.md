@@ -26,6 +26,12 @@ PEFT of the 01-Yi 34B model using a single GTX 3090 GPU with 24GB of graphics me
 
 ## Installation
 
+We support several ways to install this package.
+Except for the docker method, you should first install [Bitorch Engine](https://github.com/GreenBitAI/bitorch-engine)
+according to the [official instructions](https://github.com/GreenBitAI/bitorch-engine?tab=readme-ov-file#installation).
+
+Then choose how you want to install it:
+
 ### Using Pip
 
 ```bash
@@ -34,30 +40,28 @@ pip install green-bit-llm
 
 ### From source
 
-Simply clone the repository and install the required dependencies (for Python >= 3.9):
+Clone the repository and install the required dependencies (for Python >= 3.9):
 ```bash
 git clone https://github.com/GreenBitAI/green-bit-llm.git
 pip install -r requirements.txt
 ```
-
-Afterward, install [Flash Attention](https://github.com/Dao-AILab/flash-attention) (`flash-attn`) according to
-their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
+Afterward, install [Flash Attention](https://github.com/Dao-AILab/flash-attention) (`flash-attn`) according to their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
 
 ### Conda
 
-Alternatively you can also use the prepared conda environment configuration:
+Alternatively, you can also use the prepared conda environment configuration:
 ```bash
 conda env create -f environment.yml
 conda activate gbai_cuda_lm
 ```
+Afterward, install [Flash Attention](https://github.com/Dao-AILab/flash-attention) (`flash-attn`) according to their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
 
-Afterward, install [Flash Attention](https://github.com/Dao-AILab/flash-attention) (`flash-attn`) according to
-their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
+Alternatively you can activate an existing conda environment and install the requirements with pip (as shown in the previous section).
 
 ### Docker
 
-You can also use a Dockerfile that is based on the [bitorch-engine docker file](https://github.com/GreenBitAI/bitorch-engine/blob/HEAD/docker/README.md).
-Build that image first, then run the following commands:
+To use docker, you can also use the provided [Dockerfile](docker/Dockerfile) which extends the [bitorch-engine docker image](https://github.com/GreenBitAI/bitorch-engine/blob/HEAD/docker/README.md).
+Build the `bitorch-engine` image first, then run the following commands:
 ```bash
 cd docker
 cp -f ../requirements.txt .

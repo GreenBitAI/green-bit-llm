@@ -5,7 +5,8 @@ In the following, we show how to build a [Docker](https://www.docker.com/) image
 ## Build Docker Image
 
 1. Build the bitorch engine image according to [these instructions](https://github.com/GreenBitAI/bitorch-engine/blob/HEAD/docker/README.md).
-2. Now you should be able to build the image by running the following commands:
+2. Now you should be able to build the image by running the following commands
+   (if you used a custom image name or tag, you can adjust with `--build-arg FROM_IMAGE="bitorch/engine:custom-tag"`):
 ```bash
 # cd docker
 # you should be in this `docker` directory
@@ -25,6 +26,7 @@ docker run -it --rm --gpus all -v "${HOME}/.cache/huggingface/hub":"/root/.cache
 ## Build Options
 
 Depending on your setup, you may want to adjust some options through build arguments:
+- base docker image, e.g. add `--build-arg FROM_IMAGE="bitorch/engine:custom-tag"`
 - repository URL, e.g. add `--build-arg GIT_URL="https://github.com/MyFork/green-bit-llm.git"`
 - green-bit-llm branch or tag, e.g. add `--build-arg GIT_BRANCH="v1.2.3"`
 - if there is a problem, set the environment variable `BUILDKIT_PROGRESS=plain` to see all output

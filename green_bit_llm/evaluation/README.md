@@ -1,12 +1,9 @@
-## Evaluation
+# Evaluation Package for GreenBitAI's Low-bit LLMs
 
-### Installing Dependencies
+## Installation
 
-Ensure your system has Python3 and pip installed before proceeding and install the following additional libraries:
-
-```bash
-pip install lm_eval==0.3.0 termcolor
-```
+Please follow the [main installation instructions](../../README.md#installation) for how to install the packages required to run this inference package.
+Further packages should not be required.
 
 ### Command Details 
 
