@@ -58,12 +58,13 @@ their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=r
 
 You can also use a Dockerfile that is based on the [bitorch-engine docker file](https://github.com/GreenBitAI/bitorch-engine/blob/HEAD/docker/README.md).
 Build that image first, then run the following commands:
-
 ```bash
-cd docker && cp -f ../requirements.txt .
+cd docker
+cp -f ../requirements.txt .
 docker build -t gbai/green-bit-llm .
-docker run -it --rm --gpus all --volume "/path/to/your/project":"/workspace" gbai/green-bit-llm
+docker run -it --rm --gpus all gbai/green-bit-llm
 ```
+Check the [docker readme](docker/README.md) for options and more details.
 
 ## Usage
 ### Inference
