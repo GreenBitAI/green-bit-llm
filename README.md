@@ -34,11 +34,14 @@ pip install green-bit-llm
 
 ### From source
 
-simply clone the repository and install the required dependencies (for Python >= 3.9):
+Simply clone the repository and install the required dependencies (for Python >= 3.9):
 ```bash
 git clone https://github.com/GreenBitAI/green-bit-llm.git
 pip install -r requirements.txt
 ```
+
+Afterward, install [Flash Attention](https://github.com/Dao-AILab/flash-attention) (`flash-attn`) according to
+their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
 
 ### Conda
 
@@ -47,6 +50,9 @@ Alternatively you can also use the prepared conda environment configuration:
 conda env create -f environment.yml
 conda activate gbai_cuda_lm
 ```
+
+Afterward, install [Flash Attention](https://github.com/Dao-AILab/flash-attention) (`flash-attn`) according to
+their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
 
 ## Usage
 ### Inference
