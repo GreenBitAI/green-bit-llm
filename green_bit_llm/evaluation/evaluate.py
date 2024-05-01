@@ -55,7 +55,11 @@ def lm_evaluate(lm, args, logger):
                 seqlen=args.seqlen,
             )
             
-            testenc = testloader
+            if "c4" in dataset:
+                testenc = testloader
+            else:
+                testenc = testloader.input_ids
+
             nsamples = testenc.numel() // lm.seqlen
             use_cache = lm.model.config.use_cache
             lm.model.config.use_cache = False
