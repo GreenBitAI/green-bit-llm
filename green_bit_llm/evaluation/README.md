@@ -44,7 +44,7 @@ We have released over 200 highly precise 2.2/2.5/3/4-bit models across the moder
 
 ### PPL Evaluation
 ```bash
-python -m evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4,ptb
+python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4,ptb
 ```
 
 | **Repository** | **Bpw** | **wikitext 2 (2048)** | **c4 (2048)** |
@@ -62,7 +62,7 @@ python -m evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 -
  
 ### Few-Shot Evaluation
 ```bash
-python -m evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --batch-size 16 --few-shot-tasks wic,boolq --eval-few-shot
+python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --batch-size 16 --few-shot-tasks wic,boolq --eval-few-shot
 ```
 
 The zero-shot evaluation results for low-bit Qwen 1.5 and Llama 3 family are listed as an example:
