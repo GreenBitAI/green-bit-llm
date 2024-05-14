@@ -10,7 +10,23 @@ from green_bit_llm.common.utils import get_model_path
 
 class GbaSFTTrainer(SFTTrainer):
     def save_model(self, output_dir: Optional[str] = None, _internal_call: bool = False):
-        # do original save model
+        """
+        Saves the model to the specified directory and also ensures that the
+        'quant_strategy.json' file is copied over to the same directory.
+
+        Args:
+            output_dir (Optional[str]): The directory to which the model and the
+                                        'quant_strategy.json' file should be saved.
+                                        If None, the model will be saved to the default location.
+            _internal_call (bool): A flag used to indicate whether this method was
+                                   called internally by the library, which can affect
+                                   certain behaviors (not used in this override).
+
+        Raises:
+            ValueError: If the expected GBA prefix is not found in the output directory path.
+        """
+
+        # Perform the original save model behavior of the superclass
         super().save_model(output_dir)
 
         # save "quant_strategy.json" file
