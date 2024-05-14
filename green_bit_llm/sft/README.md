@@ -85,33 +85,33 @@ Run the script as follows to fine-tune the quantized model using the traditional
 CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.sft.peft_lora --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --lr-fp 1e-6 --batch-size 8
 ```
 
-# 0-Shot Tasks
+### 0-Shot Evaluation of Q-SFT 
 
 The 0-shot evaluations of quantized Llama 3 8B model under different fine-tuning settings are listed as an example. **Q-SFT** indicates quantized surpervised-finetuning.
 
-| Task        |   Bpw    |  Llama 3 8B Base  |  Llama 3 8B + LoRA  | Llama 3 8B Q-SFT + Galore  | Llama 3 8B + Q-SFT |
-|-------------|:--------:|:-----------------:|:-------------------:|:--------------------------:|:------------------:|
-| **PIQA**    |   2.2    |       0.72        |        0.75         |            0.75            |                    |
-|             |   2.5    |       0.74        |        0.77         |            0.76            |                    |
-|             |   3.0    |       0.76        |        0.78         |            0.78            |        0.79        |
-| **BoolQ**   |   2.2    |       0.74        |        0.77         |            0.77            |                    |
-|             |   2.5    |       0.75        |        0.76         |            0.76            |                    |
-|             |   3.0    |       0.78        |        0.80         |            0.79            |        0.80        |
-| **Winogr.** |   2.2    |       0.67        |        0.68         |            0.68            |                    |
-|             |   2.5    |       0.68        |        0.69         |            0.69            |                    |
-|             |   3.0    |       0.70        |        0.71         |            0.71            |        0.71        |
-| **ARC-E**   |   2.2    |       0.73        |        0.77         |            0.76            |                    |
-|             |   2.5    |       0.76        |        0.77         |            0.77            |                    |
-|             |   3.0    |       0.77        |        0.79         |            0.79            |        0.79        |
-| **ARC-C**   |   2.2    |       0.39        |        0.46         |            0.45            |                    |
-|             |   2.5    |       0.41        |        0.44         |            0.43            |                    |
-|             |   3.0    |       0.44        |        0.49         |            0.47            |        0.49        |
-| **WiC**     |   2.2    |       0.50        |        0.50         |            0.50            |                    |
-|             |   2.5    |       0.51        |        0.50         |            0.52            |                    |
-|             |   3.0    |       0.52        |        0.52         |            0.57            |        0.56        |
-| **Avg**     |   2.2    |       0.62        |        0.65         |            0.65            |                    |
-|             |   2.5    |       0.64        |        0.65         |            0.65            |                    |
-|             |   3.0    |       0.66        |        0.68         |            0.68            |        0.69        |
+| Task          |   Bpw    |  Llama 3 8B Base  |  Llama 3 8B + LoRA  | Llama 3 8B Q-SFT + Galore  | Llama 3 8B + Q-SFT |
+|:-------------:|:--------:|:-----------------:|:-------------------:|:--------------------------:|:------------------:|
+| **PIQA**      |   2.2    |       0.72        |        0.75         |            0.75            |                    |
+|               |   2.5    |       0.74        |        0.77         |            0.76            |                    |
+|               |   3.0    |       0.76        |        0.78         |            0.78            |        0.79        |
+| **BoolQ**     |   2.2    |       0.74        |        0.77         |            0.77            |                    |
+|               |   2.5    |       0.75        |        0.76         |            0.76            |                    |
+|               |   3.0    |       0.78        |        0.80         |            0.79            |        0.80        |
+| **Winogr.**   |   2.2    |       0.67        |        0.68         |            0.68            |                    |
+|               |   2.5    |       0.68        |        0.69         |            0.69            |                    |
+|               |   3.0    |       0.70        |        0.71         |            0.71            |        0.71        |
+| **ARC-E**     |   2.2    |       0.73        |        0.77         |            0.76            |                    |
+|               |   2.5    |       0.76        |        0.77         |            0.77            |                    |
+|               |   3.0    |       0.77        |        0.79         |            0.79            |        0.79        |
+| **ARC-C**     |   2.2    |       0.39        |        0.46         |            0.45            |                    |
+|               |   2.5    |       0.41        |        0.44         |            0.43            |                    |
+|               |   3.0    |       0.44        |        0.49         |            0.47            |        0.49        |
+| **WiC**       |   2.2    |       0.50        |        0.50         |            0.50            |                    |
+|               |   2.5    |       0.51        |        0.50         |            0.52            |                    |
+|               |   3.0    |       0.52        |        0.52         |            0.57            |        0.56        |
+| **Avg**       |   2.2    |       0.62        |        0.65         |            0.65            |                    |
+|               |   2.5    |       0.64        |        0.65         |            0.65            |                    |
+|               |   3.0    |       0.66        |        0.68         |            0.68            |        0.69        |
 
 Compared to traditional LoRA based fine-tuning, our approach streamlines engineering supply chain from fine-tuning to hardware deployment, while also enhancing performance.
 
