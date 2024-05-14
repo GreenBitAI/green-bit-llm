@@ -12,6 +12,8 @@ from .utils import create_logger, add_dict_to_json_file
 from .datautils import get_loaders
 
 from green_bit_llm.common import load
+from green_bit_llm.sft.peft_utils.model import *
+from peft import PeftModel, LoraConfig, get_peft_model
 from pathlib import Path
  
 from lm_eval import evaluator
@@ -26,6 +28,7 @@ DEFAULT_SEQLEN = 2048
 DEFAULT_RANDOM_SEED = 0
 DTYPE = torch.half
 
+replace_peft_lora_model_with_gba_lora_model()
 
 @torch.no_grad()
 def lm_evaluate(lm, args, logger):
@@ -56,6 +59,11 @@ def lm_evaluate(lm, args, logger):
             )
             
             testenc = testloader
+            if "c4" in dataset:
+                testenc = testloader
+            else:
+                testenc = testloader.input_ids
+
             nsamples = testenc.numel() // lm.seqlen
             use_cache = lm.model.config.use_cache
             lm.model.config.use_cache = False
@@ -185,6 +193,13 @@ def setup_arg_parser():
         default="log/",
         help="Specify save dir for eval results.",
     )
+    parser.add_argument(
+        "--lora-dir",
+        type=str,
+        default=None,
+        help="Specify lora dir for lora merge"
+
+    )
     return parser
 
 
@@ -217,6 +232,19 @@ def main(args):
         model_config=pretrain_model_config,
         requires_grad=False
     )
+    
+    if args.lora_dir is not None:
+        replace_peft_lora_model_with_gba_lora_model()
+        config = LoraConfig(
+            r=64,
+            lora_alpha=32,
+            target_modules=["q_proj", "v_proj", "out_proj", "up_proj"],
+            lora_dropout=0.01,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model,config)
+        model.load_adapter(args.lora_dir, adapter_name="default")
 
 
     lm = LMClass(args.model, batch_size=args.batch_size, config=config, tokenizer=tokenizer, model=model)
