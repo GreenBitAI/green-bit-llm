@@ -7,6 +7,10 @@ from huggingface_hub import snapshot_download
 
 from .enum import LayerMode
 
+STRATEGY_FILE_NAME = "quant_strategy.json"
+MODEL_TYPE_QWEN2 = "qwen2"
+STRATEGY_FILE_JSON_ROOT = "measurement"
+
 def check_engine_available()-> bool:
     """
     Checks if the required modules for Bitorch Engine are available.

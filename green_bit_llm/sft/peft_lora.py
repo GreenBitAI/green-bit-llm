@@ -1,10 +1,10 @@
-import sys
+import sys, os
 
 import torch
 
 from transformers import PreTrainedTokenizer, TrainingArguments
 from datasets import load_dataset
-from trl import SFTTrainer
+from .trainer import GbaSFTTrainer
 from peft import PeftModel, LoraConfig, get_peft_model
 
 from green_bit_llm.common import load
@@ -91,11 +91,11 @@ def main(args):
     model.train()
 
     dataset = load_dataset(args.dataset, split="train")
-    
-    args.save_dir = args.save_dir + args.model
+
+    save_dir = os.path.join(args.save_dir, args.model)
 
     train_args = TrainingArguments(
-                    output_dir=args.save_dir,
+                    output_dir=save_dir,
                     gradient_checkpointing=True,
                     auto_find_batch_size=True,
                     # per_device_train_batch_size=args.batch_size,
@@ -115,7 +115,7 @@ def main(args):
         if "qweight" not in name:
             param.requires_grad = True
     
-    trainer = SFTTrainer(
+    trainer = GbaSFTTrainer(
         model=model,
         args=train_args,
         train_dataset=dataset,
