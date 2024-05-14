@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 import json
+import os
 
 import torch
 import torch.nn as nn
@@ -9,10 +10,10 @@ from transformers import PreTrainedTokenizer, AutoTokenizer, AutoConfig, AutoMod
 import accelerate
 
 from .utils import get_layer_mode_from_name, get_packed_info, get_model_path, find_layers, apply_dtype_to
+from .utils import STRATEGY_FILE_NAME, MODEL_TYPE_QWEN2, STRATEGY_FILE_JSON_ROOT
 from .enum import LayerMode, TextGenMode
 
 import time
-from transformers import logging
 
 ENGINE_AVAILABLE = True
 try:
@@ -24,10 +25,6 @@ except ModuleNotFoundError as e:
 
 from colorama import init, Fore, Style
 init(autoreset=True)
-
-STRATEGY_FILE_NAME = "quant_strategy.json"
-MODEL_TYPE_QWEN2 = "qwen2"
-STRATEGY_FILE_JSON_ROOT = "measurement"
 
 
 def engine_layer_prepare(model: torch.nn.Module):
@@ -159,7 +156,7 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
     # Load quantization strategy if applicable
     strategy = {}
     if layer_mode in (LayerMode.LAYER_MIX, LayerMode.CHANNEL_MIX):
-        strategy_path = model_path / STRATEGY_FILE_NAME
+        strategy_path = os.path.join(model_path, STRATEGY_FILE_NAME)
         try:
             with open(strategy_path, "r") as file:
                 strategy = json.load(file)[STRATEGY_FILE_JSON_ROOT]
