@@ -100,6 +100,13 @@ def main(args):
         requires_grad=True,
     )
 
+    # NOTE:
+    # Typically, Hugging Face's Trainer does not support fine-tuning quantized models.
+    # However, our tool supports this scenario.
+    # Therefore, we need to delete this attribute after loading the model.
+    if hasattr(model, 'is_quantized'):
+        delattr(model, 'is_quantized')
+
     param_groups = create_param_groups(model, args, DEFAULT_BETAS, DEFAULT_LR_GALORE, DEFAULT_LR_ADAMW8BIT, DEFAULT_LR)
 
     model.train()
