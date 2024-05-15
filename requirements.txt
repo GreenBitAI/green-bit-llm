@@ -11,3 +11,5 @@ pillow
 requests
 prompt-toolkit
 rich
+optimum
+auto-gptq
