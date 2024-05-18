@@ -1,4 +1,4 @@
-import sys, os
+import sys
 
 import torch
 
@@ -91,16 +91,19 @@ def main(args):
     model.train()
 
     dataset = load_dataset(args.dataset, split="train")
-
-    save_dir = os.path.join(args.save_dir, args.model)
+    
+    args.save_dir = os.path.join(args.save_dir, "lora/", args.model)
 
     train_args = TrainingArguments(
-                    output_dir=save_dir,
+                    output_dir=args.save_dir,
                     gradient_checkpointing=True,
-                    auto_find_batch_size=True,
-                    # per_device_train_batch_size=args.batch_size,
+                    #auto_find_batch_size=True,
+                    per_device_train_batch_size=args.batch_size,
                     logging_steps=1,
+                    num_train_epochs=1,
+                    gradient_accumulation_steps=1,
                     save_steps=args.save_step,
+                    #warmup_ratio=0.05,
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                 )
 
