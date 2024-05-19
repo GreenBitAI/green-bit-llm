@@ -16,6 +16,7 @@ Additionally, you can use our provided **evaluation tools** to validate the mode
 
 ## LLMs
 
+We have released over 200 highly precise 2.2/2.5/3/4-bit models across the modern LLM family, featuring LLaMA 2/3, 01-Yi, Qwen, Mistral, Phi-3, and more. 
 
 |      Family      |        Bpw         |              Size              |                                                 HF collection_id                                                  |
 |:----------------:|:------------------:|:------------------------------:|:-----------------------------------------------------------------------------------------------------------------:|
@@ -31,6 +32,7 @@ Additionally, you can use our provided **evaluation tools** to validate the mode
 |  Qwen-1.5-Chat   | `4.0/3.0/2.5/2.2`  | `0.5B/1.8B/4B/7B/14B/32B/110B` | [`GreenBitAI Qwen 1.5`](https://huggingface.co/collections/GreenBitAI/greenbitai-qwen15-661f86ea69433f3d3062c920) |
 |    01-Yi-Chat    |   `3.0/2.5/2.2`    |            `6B/34B`            |   [`GreenBitAI 01-Yi`](https://huggingface.co/collections/GreenBitAI/greenbitai-01-yi-661f88af0648daa766d5102f)   |           
 
+In addition to our low-bit models, green-bit-llm is fully compatible with the AutoGPTQ series of 4-bit quantization and compression models.
 
 ## Demo
 
