@@ -8,8 +8,9 @@ import torch.nn as nn
 
 from transformers import PreTrainedTokenizer, AutoTokenizer, AutoConfig, AutoModelForCausalLM, PreTrainedModel, logging
 import accelerate
+from auto_gptq.nn_modules.qlinear.qlinear_cuda import QuantLinear
 
-from .utils import get_layer_mode_from_name, get_packed_info, get_model_path, find_layers, apply_dtype_to
+from .utils import get_layer_mode, get_packed_info, get_model_path, find_layers, apply_dtype_to
 from .utils import STRATEGY_FILE_NAME, MODEL_TYPE_QWEN2, STRATEGY_FILE_JSON_ROOT
 from .enum import LayerMode, TextGenMode
 
@@ -102,10 +103,18 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
 
             disable_bias = get_disable_bias(name_attr, model_type)
 
+            # Check if auto_gptq.QuantLinear is used
+            is_quant_linear = isinstance(tmp, QuantLinear)
+            use_gba_quant = not is_quant_linear
+            asym = is_quant_linear
+            in_c = tmp.infeatures if is_quant_linear else tmp.in_features
+            out_c = tmp.outfeatures if is_quant_linear else tmp.out_features
+
             common_params = {
-                "in_channels": tmp.in_features, "out_channels": tmp.out_features,
+                "in_channels": in_c,
+                "out_channels": out_c,
                 "w_bit": bits, "dtype": dtype, "group_size": group_size, "dq_group_size": 32,
-                "use_gba_quant": True, "asym": False, "dq_mode": 2, "requires_grad": requires_grad,
+                "use_gba_quant": use_gba_quant, "asym": asym, "dq_mode": 2, "requires_grad": requires_grad,
                 "disable_bias": disable_bias
             }
 
@@ -125,9 +134,35 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
         make_quant(child, names, layer_mode, name_sub, group_size, bits, dtype, quant_strategy, model_type, requires_grad)
 
 
-def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = None, group_size: Optional[int] = None,
+def load_strategy_file(model_path: Path, layer_mode: LayerMode) -> Dict:
+    """
+        Load strategy configuration from a file based on the provided layer mode.
+
+        Args:
+            model_path (Path): The file system path to the model directory.
+            layer_mode (LayerMode): The mode of the layers, either 'layer_mix' or 'channel_mix'.
+
+        Returns:
+            Dict: A dictionary containing the strategy configuration if the layer_mode is
+                  'layer_mix' or 'channel_mix'. Returns an empty dictionary otherwise.
+
+        Raises:
+            FileNotFoundError: If the strategy configuration file is not found in the specified path.
+    """
+    strategy = {}
+    if layer_mode in (LayerMode.LAYER_MIX, LayerMode.CHANNEL_MIX):
+        strategy_path = os.path.join(model_path, STRATEGY_FILE_NAME)
+        try:
+            with open(strategy_path, "r") as file:
+                strategy = json.load(file)[STRATEGY_FILE_JSON_ROOT]
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Error: Strategy config file not found in {model_path}")
+    return strategy
+
+
+def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits: Optional[int] = None, group_size: Optional[int] = None,
                dtype: torch.dtype = torch.half, device_map: set = {"cuda:0"}, seqlen: int = 2048,
-               model_config: Dict = {}, requires_grad: bool = False) -> Tuple[nn.Module, AutoConfig]:
+               model_config: Dict = {}, requires_grad: bool = False) -> nn.Module:
     """
     Load and initialize a model from the given path with options for quantization and device distribution.
 
@@ -136,6 +171,7 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
 
     Args:
         model_path (Path): Path to the model.
+        config (Dict): configs loaded from hf-model-config.
         layer_mode (LayerMode): Layer mode for quantization.
         bits (Optional[int]): Number of bits for quantization.
         group_size (Optional[int]): Group size for quantization.
@@ -146,7 +182,7 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
         requires_grad (bool): Set if the model requires gradient. It can be set to True for training.
 
     Returns:
-        Tuple[nn.Module, AutoConfig]: A tuple containing the loaded and initialized model and its configuration.
+        nn.Module: The loaded and initialized model.
     """
     logging.set_verbosity_error()
 
@@ -154,18 +190,10 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
     print(Style.BRIGHT + Fore.CYAN + "Info: Loading Model ...")
 
     # Load quantization strategy if applicable
-    strategy = {}
-    if layer_mode in (LayerMode.LAYER_MIX, LayerMode.CHANNEL_MIX):
-        strategy_path = os.path.join(model_path, STRATEGY_FILE_NAME)
-        try:
-            with open(strategy_path, "r") as file:
-                strategy = json.load(file)[STRATEGY_FILE_JSON_ROOT]
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Error: Strategy config file not found in {model_path}")
+    strategy = load_strategy_file(model_path, layer_mode)
 
     # Initialize model with empty weights and load configuration
     with accelerate.init_empty_weights():
-        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
         model = AutoModelForCausalLM.from_pretrained(model_path, config=config, torch_dtype=dtype, **model_config).eval()
 
         # Quantize layers as necessary
@@ -189,7 +217,7 @@ def load_model(model_path: Path, layer_mode: LayerMode, bits: Optional[int] = No
     print(Style.BRIGHT + Fore.CYAN + f'Info: Total {torch.cuda.memory_allocated() / 1024**3:.2f} GiB VRAM used.')
     print(Style.BRIGHT + Fore.CYAN + f"Info: Loaded the model in {time.time() - start_time:.2f} seconds.")
 
-    return model, config
+    return model
 
 
 def load(
@@ -225,10 +253,13 @@ def load(
     if not ENGINE_AVAILABLE:
         raise Exception("Error: Bitorch Engine layers are not available.")
 
-    layer_mode, bits, group_size = get_layer_mode_from_name(path_or_hf_repo)
     model_path = get_model_path(path_or_hf_repo)
 
-    model, config = load_model(model_path, layer_mode, bits, group_size, dtype, device_map, seqlen, model_config, requires_grad)
+    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+
+    layer_mode, bits, group_size = get_layer_mode(path_or_hf_repo, config)
+
+    model = load_model(model_path, config, layer_mode, bits, group_size, dtype, device_map, seqlen, model_config, requires_grad)
 
     tokenizer = AutoTokenizer.from_pretrained(path_or_hf_repo, **tokenizer_config)
 

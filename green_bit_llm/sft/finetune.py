@@ -29,10 +29,10 @@ from .utils import str_to_torch_dtype, create_param_groups
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0"
 DEFAULT_SEQLEN = 512
 DEFAULT_RANDOM_SEED = 0
-DEFAULT_LR = 1e-5
-DEFAULT_LR_GALORE = 1e-4
+DEFAULT_LR = 5e-6
+DEFAULT_LR_GALORE = 5e-5
 DEFAULT_LR_ADAMW8BIT = 5e-3
-DEFAULT_BETAS = (0.95, 0.999)
+DEFAULT_BETAS = (0.9, 0.99)
 
 
 def setup_arg_parser():
@@ -50,7 +50,7 @@ def setup_arg_parser():
         action="store_true",
         help="Enable using galore",
     )
-    parser.add_argument("--galore-rank", type=int, default=128)
+    parser.add_argument("--galore-rank", type=int, default=256)
     parser.add_argument("--galore-update-proj-gap", type=int, default=200)
     parser.add_argument("--galore-scale", type=float, default=0.25)
     parser.add_argument("--galore-proj-type", type=str, default="std")
@@ -100,21 +100,36 @@ def main(args):
         requires_grad=True,
     )
 
+    # NOTE:
+    # Typically, Hugging Face's Trainer does not support fine-tuning quantized models.
+    # However, our tool supports this scenario.
+    # Therefore, we need to delete this attribute after loading the model.
+    if hasattr(model, 'is_quantized'):
+        delattr(model, 'is_quantized')
+
     param_groups = create_param_groups(model, args, DEFAULT_BETAS, DEFAULT_LR_GALORE, DEFAULT_LR_ADAMW8BIT, DEFAULT_LR)
 
     model.train()
 
     dataset = load_dataset(args.dataset, split="train")
-
-    save_dir = os.path.join(args.save_dir, args.model)
+    
+    if not args.galore:
+        args.save_dir = os.path.join(args.save_dir, "finetune/common/", args.model)
+    else:
+        args.save_dir = os.path.join(args.save_dir, "finetune/galore/", args.model)
+    
 
     train_args = TrainingArguments(
-                    output_dir=save_dir,
+                    output_dir=args.save_dir,
                     gradient_checkpointing=True,
-                    # auto_find_batch_size=True,
+                    #auto_find_batch_size=True,
                     per_device_train_batch_size=args.batch_size,
                     logging_steps=1,
+                    num_train_epochs=1,
                     save_steps=args.save_step,
+                    save_total_limit=3,
+                    gradient_accumulation_steps=1,
+                    lr_scheduler_type='cosine',
                     max_grad_norm=0, # NOTE: max_grad_norm MUST be <= 0 or None, otherwise raise dtype error due to the Int dtype of qweight.
                 )
 

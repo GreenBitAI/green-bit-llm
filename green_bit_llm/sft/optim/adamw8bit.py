@@ -9,7 +9,7 @@ except ModuleNotFoundError as e:
 
 try:
     from bitorch_engine.layers.qlinear.nbit import MPQWeightParameter
-    from bitorch_engine.utils.quant_operators import gptq_stype_unpacking
+    from bitorch_engine.utils.quant_operators import gptq_style_unpacking
     from bitorch_engine.layers.qlinear.nbit.cuda.utils import pack_fp_weight
 except ModuleNotFoundError as e:
     raise Exception(f"Error occurred while importing Bitorch Engine module '{str(e)}'.")
@@ -101,7 +101,7 @@ class AdamW8bit(Optimizer2State):
                     if isinstance(p, MPQWeightParameter):
                         # unpack qweight
                         p.data = saved_data
-                        w_unpacked = gptq_stype_unpacking(p).to(self.dtype).to(saved_data.device)
+                        w_unpacked = gptq_style_unpacking(p).to(self.dtype).to(saved_data.device)
                         w_unpacked.add_(norm_grad)
                         if group["weight_decay"] > 0.0:
                             w_unpacked.add_(w_unpacked, alpha=-group['lr'] * group['weight_decay'])
@@ -116,7 +116,7 @@ class AdamW8bit(Optimizer2State):
                     norm_grad = p.data.clone()
                     # unpack qweight
                     p.data = saved_data
-                    w_unpacked = gptq_stype_unpacking(p).to(self.dtype).to(saved_data.device)
+                    w_unpacked = gptq_style_unpacking(p).to(self.dtype).to(saved_data.device)
                     w_unpacked.add_(norm_grad)
                     if group["weight_decay"] > 0.0:
                         w_unpacked.add_(w_unpacked, alpha=-group['lr'] * group['weight_decay'])

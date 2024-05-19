@@ -5,11 +5,17 @@ import torch
 
 from huggingface_hub import snapshot_download
 
+from transformers import AutoConfig
+
+from auto_gptq.nn_modules.qlinear.qlinear_cuda import QuantLinear
+
 from .enum import LayerMode
 
 STRATEGY_FILE_NAME = "quant_strategy.json"
 MODEL_TYPE_QWEN2 = "qwen2"
 STRATEGY_FILE_JSON_ROOT = "measurement"
+GPTQ_QUANTIZATION_CONFIG = "quantization_config"
+
 
 def check_engine_available()-> bool:
     """
@@ -59,19 +65,49 @@ def match_model_pattern(model_name: str) -> tuple:
     raise ValueError(f"Invalid or unsupported model name pattern: {model_name}")
 
 
-def get_layer_mode_from_name(model_name: str) -> tuple:
+def check_quantization_config(config: AutoConfig):
     """
-    Determines the layer mode from the model name and extracts weight bits and group size if present.
+    Checks the quantization configuration of the given model configuration.
+
+    Args:
+        config (AutoConfig): The model configuration object.
+
+    Returns:
+        tuple: A tuple containing the layer mode, weight bits, and group size if the quantization configuration
+               meets the specified criteria (quant_method is 'gptq' and sym is True). If the criteria are not met,
+               returns (None, None, None).
+    """
+    if hasattr(config, GPTQ_QUANTIZATION_CONFIG):
+        quant_config = config.quantization_config
+        quant_config['disable_exllama'] = True
+        # check if quant_method is gptq and sym must be True
+        if quant_config.get('quant_method') == 'gptq' and quant_config.get('sym') == True:
+            bits = quant_config.get('bits')
+            group_size = quant_config.get('group_size')
+            return LayerMode.LEGENCY, bits, group_size
+
+    return None, None, None
+
+
+def get_layer_mode(model_name: str, config: AutoConfig) -> tuple:
+    """
+    Determines the layer mode from the model's config or from the model name and extracts weight bits and group size if present.
 
     Args:
         model_name (str): The name of the model.
+        config (AutoConfig): The model configuration object.
 
     Returns:
-        tuple: The layer mode, weight bits, and group size.
+        tuple: A tuple containing the layer mode, weight bits, and group size. If the model's quantization
+               configuration does not meet the specified criteria, it matches the model name pattern.
 
     Raises:
         ValueError: If the model name is invalid or unsupported.
     """
+    mode, bits, group_size = check_quantization_config(config)
+    if bits is not None:
+        return mode, bits, group_size
+
     return match_model_pattern(model_name)
 
 
@@ -108,7 +144,7 @@ def get_packed_info(channels, n_bits, bits_prop, bits_group_size):
 
 
 
-def find_layers(module: nn.Module, layers=[nn.Conv2d, nn.Linear], name=''):
+def find_layers(module: nn.Module, layers=[nn.Conv2d, nn.Linear, QuantLinear], name=''):
     """
     Recursively searches and returns a dictionary of layers within a given PyTorch model
     (or module) that match the specified types.
@@ -181,6 +217,9 @@ def apply_dtype_to(model: nn.Module, dtype: torch.dtype):
     """
 
     # Check if the specified dtype is torch.half, and if so, convert the model to half precision.
+    if model.dtype is dtype:
+        return
+
     if dtype is torch.half:
         model.half()
     # Check if the specified dtype is torch.bfloat16, and if so, convert the model to bfloat16 precision.

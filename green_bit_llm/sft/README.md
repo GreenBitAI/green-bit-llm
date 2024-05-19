@@ -27,7 +27,9 @@ pip install bitsandbytes galore-torch
 
 ### LLMs
 
-We have released over 200 highly precise 2.2/2.5/3/4-bit models across the modern LLM family, featuring LLaMA 2/3, 01-Yi, Qwen, Mistral, Phi-3, and more. Currently, only layer-mix quantized models are supported for sft.
+We have released over 200 highly precise 2.2/2.5/3/4-bit models across the modern LLM family, featuring LLaMA 2/3, 01-Yi, Qwen, Mistral, Phi-3, and more. Currently, only layer-mix quantized models are supported for sft. In addition to our low-bit models, green-bit-llm is fully compatible with the AutoGPTQ series of 4-bit quantization and compression models.
+
+Happy scaling low-bit LLMs with more data!
 
 |       Family     |        Bpw         |              Size              |                                                 HF collection id                                                  |
 |:----------------:|:------------------:|:------------------------------:|:-----------------------------------------------------------------------------------------------------------------:|
@@ -51,6 +53,9 @@ The **--tune-qweight-only** parameter determines whether to fine-tune only the q
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.sft.finetune --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --tune-qweight-only
+
+# AutoGPTQ model Q-SFT
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.sft.finetune --model astronomer/Llama-3-8B-Instruct-GPTQ-4-Bit --dataset tatsu-lab/alpaca --tune-qweight-only --batch-size 1
 ```
 If you want to further save memory, we also support [Galore](https://github.com/jiaweizzhao/GaLore): a memory-efficient low-rank training strategy. 
 You just need to add the **--galore** parameter in your command line. However, it's important to note that Galore requires the computation of projection matrices for the gradients, which will incur additional time costs. 
@@ -61,8 +66,40 @@ To select the "AdamW8bit" optimizer, simply add "--optimizer AdamW8bit" to your 
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.sft.peft_lora --model GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-3.0 --dataset tatsu-lab/alpaca --lr-fp 1e-6
+
+# AutoGPTQ model with Lora
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.sft.peft_lora --model astronomer/Llama-3-8B-Instruct-GPTQ-4-Bit --dataset tatsu-lab/alpaca --lr-fp 1e-6
 ```
 
+### 0-Shot Evaluation of Q-SFT 
+
+The 0-shot evaluations of quantized Llama 3 8B model under different fine-tuning settings are listed as an example. **Q-SFT** indicates quantized surpervised-finetuning.
+
+| Task          |   Bpw    |  Llama 3 8B Base  |  Llama 3 8B + LoRA  | Llama 3 8B Q-SFT + Galore  | Llama 3 8B + Q-SFT |
+|:-------------:|:--------:|:-----------------:|:-------------------:|:--------------------------:|:------------------:|
+|     PIQA      |   2.2    |       0.72        |        0.75         |            0.75            |        0.75        |
+|               |   2.5    |       0.74        |        0.77         |            0.76            |        0.76        |
+|               |   3.0    |       0.76        |        0.78         |            0.78            |        0.79        |
+|     BoolQ     |   2.2    |       0.74        |        0.77         |            0.77            |        0.78        |
+|               |   2.5    |       0.75        |        0.76         |            0.76            |        0.78        |
+|               |   3.0    |       0.78        |        0.80         |            0.79            |        0.80        |
+|     Winogr.   |   2.2    |       0.67        |        0.68         |            0.68            |        0.67        |
+|               |   2.5    |       0.68        |        0.69         |            0.69            |        0.69        |
+|               |   3.0    |       0.70        |        0.71         |            0.71            |        0.71        |
+|     ARC-E     |   2.2    |       0.73        |        0.77         |            0.76            |        0.75        |
+|               |   2.5    |       0.76        |        0.77         |            0.77            |        0.76        |
+|               |   3.0    |       0.77        |        0.79         |            0.79            |        0.79        |
+|     ARC-C     |   2.2    |       0.39        |        0.46         |            0.45            |        0.45        |
+|               |   2.5    |       0.41        |        0.44         |            0.43            |        0.43        |
+|               |   3.0    |       0.44        |        0.49         |            0.47            |        0.49        |
+|     WiC       |   2.2    |       0.50        |        0.50         |            0.50            |        0.50        |
+|               |   2.5    |       0.51        |        0.50         |            0.52            |        0.51        |
+|               |   3.0    |       0.52        |        0.52         |            0.57            |        0.60        |
+|     Avg       |   2.2    |       0.62        |        0.65         |            0.65            |        0.65        |
+|               |   2.5    |       0.64        |        0.65         |            0.65            |        0.65        |
+|               |   3.0    |       0.66        |        0.68         |            0.68            |        0.69        |
+
+Compared to traditional LoRA based fine-tuning, our approach streamlines engineering supply chain from fine-tuning to hardware deployment, while also enhancing performance.
 
 ### Current Limitations
 
