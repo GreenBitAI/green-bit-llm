@@ -7,11 +7,17 @@ import torch.nn as nn
 
 from tqdm import tqdm
 
+import safetensors
+from peft import PeftModel, LoraConfig, get_peft_model
+
 from .lmclass import LMClass
 from .utils import create_logger, add_dict_to_json_file
 from .datautils import get_loaders
 
 from green_bit_llm.common import load
+from green_bit_llm.common.utils import get_model_path
+from green_bit_llm.sft.peft_utils.model import *
+from peft import PeftModel, LoraConfig, get_peft_model
 from pathlib import Path
  
 from lm_eval import evaluator
@@ -26,6 +32,7 @@ DEFAULT_SEQLEN = 2048
 DEFAULT_RANDOM_SEED = 0
 DTYPE = torch.half
 
+replace_peft_lora_model_with_gba_lora_model()
 
 @torch.no_grad()
 def lm_evaluate(lm, args, logger):
@@ -174,7 +181,7 @@ def setup_arg_parser():
     parser.add_argument(
         "--few-shot-tasks",
         type=str,
-        default="openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq,race,truthfulqa_mc,anli_r1,anli_r2,anli_r3,wic",
+        default="openbookqa,arc_easy,winogrande,hellaswag,arc_challenge,piqa,boolq,race,anli_r1,anli_r2,anli_r3,wic",
         help="Few-shot learning ability evaluation tasks.",
     )
     parser.add_argument(
@@ -188,6 +195,13 @@ def setup_arg_parser():
         type=str,
         default="log/",
         help="Specify save dir for eval results.",
+    )
+    parser.add_argument(
+        "--lora-dir",
+        type=str,
+        default=None,
+        help="Specify lora dir for lora merge"
+
     )
     return parser
 
@@ -211,7 +225,7 @@ def main(args):
 
     if args.eos_token is not None:
         tokenizer_config["eos_token"] = args.eos_token
-
+    
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,
@@ -221,18 +235,30 @@ def main(args):
         model_config=pretrain_model_config,
         requires_grad=False
     )
-
+    
+    if args.lora_dir is not None:
+        config = LoraConfig(
+            r=64,
+            lora_alpha=32,
+            target_modules=["q_proj", "v_proj", "out_proj", "up_proj"],
+            lora_dropout=0.01,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model,config)
+        model.load_adapter(args.lora_dir, adapter_name="default")
 
     lm = LMClass(args.model, batch_size=args.batch_size, config=config, tokenizer=tokenizer, model=model)
     lm.seqlen = args.seqlen
     
     logger = create_logger(Path(args.save_dir))
-
-    eval_results = lm_evaluate(lm=lm, args=args, logger=logger)
+    
+    with torch.no_grad():
+        eval_results = lm_evaluate(lm=lm, args=args, logger=logger)
 
     eval_results = {"{}".format(args.model): eval_results}
 
-    add_dict_to_json_file(file_path="{}".format(args.save_dir + "eval_results.json"), new_data=eval_results)
+    add_dict_to_json_file(file_path="{}".format(os.path.join(args.save_dir, "eval_results.json")), new_data=eval_results)
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():
