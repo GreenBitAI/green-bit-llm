@@ -38,17 +38,18 @@ class GbaSFTTrainer(SFTTrainer):
 
         if start_index == -1:
             config_path = os.path.join(output_dir, "config.json")
-            with open(config_path, 'r') as file:
-                data = json.load(file)
-            if "quantization_config" in data.keys():
-                quantization_config = data["quantization_config"]
-                if "exllama_config" in quantization_config.keys():
-                    del quantization_config["exllama_config"]
-                if "use_exllama" in quantization_config.keys():
-                    del quantization_config["use_exllama"]
+            if os.path.isfile(config_path):
+                with open(config_path, 'r') as file:
+                    data = json.load(file)
+                if "quantization_config" in data.keys():
+                    quantization_config = data["quantization_config"]
+                    if "exllama_config" in quantization_config.keys():
+                        del quantization_config["exllama_config"]
+                    if "use_exllama" in quantization_config.keys():
+                        del quantization_config["use_exllama"]
 
-            with open(config_path, 'w') as file:
-                json.dump(data, file, indent=4)
+                with open(config_path, 'w') as file:
+                    json.dump(data, file, indent=4)
             return
 
         # Ensure this is executed only on the main process
