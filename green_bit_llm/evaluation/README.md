@@ -78,6 +78,21 @@ python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer
 |                |            |     2.5      |          5.4          |      9.1      |
 |                |            |     2.2      |          5.9          |     10.2      |
  
+| **Repository** | **Quant Method** | **Require Finetune** |  **Codebook**  |   **Avg bits** | **wikitext 2 (4096)** |   **c4 (4096)**   | 
+|:--------------:|:----------------:|:--------------------:|:--------------:|:--------------:|:---------------------:|:-----------------:|
+|   Llama-2 7B   |       None       |          ❌          |       ❌       |           16.0 |          5.1          |        6.6        |
+|                |       AQLM       |          ✅          |       ✅       |            3.0 |          5.4          |        7.0        |
+|                |                  |          ✅          |       ✅       |            2.3 |          6.3          |        8.1        |
+|                |                  |          ✅          |       ✅       |            2.0 |          6.6          |        8.5        |
+|                |      QuIP#       |          ✅          |       ✅       |            3.0 |          5.4          |        7.0        |
+|                |                  |          ✅          |       ✅       |            2.0 |          6.2          |        8.1        |
+|                |                  |          ❌          |       ✅       |            3.0 |          5.6          |        7.3        |
+|                |                  |          ❌          |       ✅       |            2.0 |          8.2          |       11.0        |
+|                |       Ours       |          ❌          |       ❌       |            3.0 |          5.4          |        7.5        |
+|                |                  |          ❌          |       ❌       |            2.5 |          5.7          |        8.3        |
+|                |                  |          ❌          |       ❌       |            2.2 |          5.9          |        8.8        |
+
+
 ### Few-Shot Evaluation
 ```bash
 python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --batch-size 16 --few-shot-tasks wic,boolq --eval-few-shot
