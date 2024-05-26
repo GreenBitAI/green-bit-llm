@@ -38,11 +38,11 @@ In addition to our low-bit models, green-bit-llm is fully compatible with the Au
 
 Full parameter fine-tuning of the LLaMA-3 8B model using a single GTX 3090 GPU with 24GB of graphics memory:
 
-<img src="assets/demo_llama3_8B_fpft.gif" width="960">
+<img src="https://raw.githubusercontent.com/GreenBitAI/green-bit-llm/main/assets/demo_llama3_8B_fpft.gif" width="960">
 
 PEFT of the 01-Yi 34B model using a single GTX 3090 GPU with 24GB of graphics memory:
 
-<img src="assets/demo_yi_34B_peft.gif" width="960">
+<img src="https://raw.githubusercontent.com/GreenBitAI/green-bit-llm/main/assets/demo_yi_34B_peft.gif" width="960">
 
 ## Installation
 
