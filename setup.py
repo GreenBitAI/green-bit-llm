@@ -16,7 +16,6 @@ setup(
     description="A toolkit for fine-tuning, inferencing, and evaluating GreenBitAI's LLMs.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    readme="README.md",
     author_email="team@greenbit.ai",
     author="GreenBitAI Contributors",
     url="https://github.com/GreenBitAI/green-bit-llm",
@@ -24,4 +23,5 @@ setup(
     install_requires=requirements,
     packages=find_packages(),
     python_requires=">=3.9",
+    data_files=[('.', ['requirements.txt'])],
 )
