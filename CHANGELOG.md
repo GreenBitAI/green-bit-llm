@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## [0.2.4] - 2024/06/04
+
+### Fixed
+
+- Source distribution (was missing `requirements.txt`)
+
 ## [0.2.3] - 2024/05/26
 
 ### Added
