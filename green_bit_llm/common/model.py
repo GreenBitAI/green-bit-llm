@@ -19,7 +19,7 @@ import time
 ENGINE_AVAILABLE = True
 try:
     from bitorch_engine.layers.qlinear.nbit import MPQLinearBase
-    from bitorch_engine.layers.qlinear.nbit.cuda import MPQLinearCuda, MBWQLinearCuda
+    from bitorch_engine.layers.qlinear.nbit.cuda import MPQLinearCuda, MBWQLinearCuda, MBWQ_DQ_LinearCuda
 except ModuleNotFoundError as e:
     ENGINE_AVAILABLE = False
     print(f"Error: Module not found: {e}.")
@@ -121,7 +121,10 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
             if layer_mode == LayerMode.LEGENCY:
                 quantized_layer = MPQLinearCuda(**common_params)
             elif layer_mode == LayerMode.LAYER_MIX:
-                quantized_layer = MBWQLinearCuda(use_mbw=False, **common_params)
+                if group_size > 32:
+                    quantized_layer = MBWQLinearCuda(use_mbw=False, **common_params)
+                else:
+                    quantized_layer = MBWQ_DQ_LinearCuda(use_mbw=False, **common_params)
             elif layer_mode == LayerMode.CHANNEL_MIX:
                 quantized_layer = MBWQLinearCuda(use_mbw=True, groups=groups, rows_packed=rows, **common_params)
             else:

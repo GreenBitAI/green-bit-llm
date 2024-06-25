@@ -5,7 +5,7 @@ torch>=2.0.0
 sentencepiece
 transformers>=4.38.0
 huggingface-hub
-lm-eval==0.3.0
+lm-eval
 termcolor
 pillow
 requests

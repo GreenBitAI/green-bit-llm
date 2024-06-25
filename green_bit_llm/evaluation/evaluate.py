@@ -21,6 +21,7 @@ from peft import PeftModel, LoraConfig, get_peft_model
 from pathlib import Path
  
 from lm_eval import evaluator
+from lm_eval.utils import make_table
 
 import warnings
 
@@ -104,12 +105,11 @@ def lm_evaluate(lm, args, logger):
             tasks=few_shot_tasks,
             batch_size=args.batch_size,
             num_fewshot=args.num_fewshot,
-            no_cache=True
         )
         
         results.update({"results": eval_results["results"]})
         results.update({"versions": eval_results["versions"]})
-        logger.info(evaluator.make_table(results))
+        print(make_table(eval_results))
 
     return results
 
@@ -164,7 +164,7 @@ def setup_arg_parser():
     parser.add_argument(
         "--ppl-tasks",
         type=str,
-        default="wikitext2, c4_new, ptb",
+        default="wikitext2, c4, ptb",
         help="Specify ppl evaluation task.",
     )
     parser.add_argument(
