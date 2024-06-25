@@ -124,6 +124,11 @@ CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.inference.sim_gen --model GreenBi
 CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4_new,ptb
 ```
 
+### Few-shot Evaluation
+```bash
+CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.evaluation.evaluate --trust-remote-code --eval-few-shot --model GreenBitAI/Qwen-1.5-4b-layer-mix-bpw-2.2-double-quant --few-shot-tasks ceval-valid,mmlu,piqa,hellaswag,arc_easy,arc_challenge,winogrande --num-fewshot 0 --batch-size 16
+```
+
 ### Full-parameter fine-tuning
 
 Run the script as follows to fine-tune the quantized weights of the model on the target dataset. 
