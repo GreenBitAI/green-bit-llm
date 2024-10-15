@@ -44,6 +44,7 @@ class GreenBitPipeline(BaseLLM):
             gb = GreenBitPipeline.from_model_id(
                 model_id="GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0",
                 task="text-generation",
+                device="cuda:0",
                 pipeline_kwargs={"max_tokens": 100, "temp": 0.7},
                 model_kwargs={"dtype": torch.half, "device_map": 'auto', "seqlen": 2048, "requires_grad": False}
             )
@@ -53,7 +54,9 @@ class GreenBitPipeline(BaseLLM):
     model_id: str = DEFAULT_MODEL_ID
     task: str = DEFAULT_TASK
     model_kwargs: Optional[dict] = None
+    """Keyword arguments passed to the model."""
     pipeline_kwargs: Optional[dict] = None
+    """Keyword arguments passed to the pipeline."""
     batch_size: int = DEFAULT_BATCH_SIZE
 
     class Config:
