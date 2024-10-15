@@ -6,5 +6,3 @@ langchain-experimental
 beautifulsoup4
 pydantic
 sentence-transformers
-transformers
-torch

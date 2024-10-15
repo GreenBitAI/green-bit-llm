@@ -1,7 +1,5 @@
-from __future__ import annotations
-
-from typing import Any, Iterator, List, Mapping, Optional
-
+from typing import Any, Iterator, List, Mapping, Optional, Dict
+from pydantic import Field
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.llms import BaseLLM
 from langchain_core.outputs import Generation, GenerationChunk, LLMResult
@@ -44,37 +42,33 @@ class GreenBitPipeline(BaseLLM):
             gb = GreenBitPipeline.from_model_id(
                 model_id="GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0",
                 task="text-generation",
-                device="cuda:0",
                 pipeline_kwargs={"max_tokens": 100, "temp": 0.7},
-                model_kwargs={"dtype": torch.half, "device_map": 'auto', "seqlen": 2048, "requires_grad": False}
+                model_kwargs={"dtype": torch.half, "seqlen": 2048}
             )
     """
 
     pipeline: Any
     model_id: str = DEFAULT_MODEL_ID
     task: str = DEFAULT_TASK
-    model_kwargs: Optional[dict] = None
-    """Keyword arguments passed to the model."""
-    pipeline_kwargs: Optional[dict] = None
-    """Keyword arguments passed to the pipeline."""
+    model_kwargs: Dict[str, Any] = Field(default_factory=dict)
+    pipeline_kwargs: Dict[str, Any] = Field(default_factory=dict)
     batch_size: int = DEFAULT_BATCH_SIZE
 
-    class Config:
-        """Configuration for this pydantic object."""
-        extra = "forbid"
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.model_kwargs = kwargs.get("model_kwargs", {})
+        self.pipeline_kwargs = kwargs.get("pipeline_kwargs", {})
 
     @classmethod
     def from_model_id(
-        cls,
-        model_id: str,
-        task: str = DEFAULT_TASK,
-        device: Optional[str] = "cuda:0",
-        model_kwargs: Optional[dict] = None,
-        pipeline_kwargs: Optional[dict] = None,
-        batch_size: int = DEFAULT_BATCH_SIZE,
-        **kwargs: Any,
-    ) -> GreenBitPipeline:
-        """Construct the pipeline object from model_id and task."""
+            cls,
+            model_id: str,
+            task: str = DEFAULT_TASK,
+            model_kwargs: Optional[dict] = Field(default_factory=dict),
+            pipeline_kwargs: Optional[dict] = Field(default_factory=dict),
+            batch_size: int = DEFAULT_BATCH_SIZE,
+            **kwargs: Any,
+    ) -> "GreenBitPipeline":
         if not check_engine_available():
             raise ValueError(
                 "Could not import BitorchEngine. "
@@ -87,25 +81,21 @@ class GreenBitPipeline(BaseLLM):
                 f"currently only {VALID_TASKS} are supported"
             )
 
-        _model_kwargs = model_kwargs or {}
-        _pipeline_kwargs = pipeline_kwargs or {}
+        _model_kwargs = model_kwargs or {"dtype": torch.half, "seqlen": 2048, "device_map": "auto"}
+        _pipeline_kwargs = pipeline_kwargs or {"max_tokens": 100, "temp": 0.7}
 
-        # Load model and tokenizer
         model, tokenizer, _ = load(
             model_id,
-            device_map={device},
             **_model_kwargs
         )
 
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
-        # Create pipeline
         pipe = pipeline(
             task=task,
             model=model,
             tokenizer=tokenizer,
-            device=device,
             **_pipeline_kwargs
         )
 
@@ -121,7 +111,6 @@ class GreenBitPipeline(BaseLLM):
 
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
-        """Get the identifying parameters."""
         return {
             "model_id": self.model_id,
             "task": self.task,
@@ -134,24 +123,27 @@ class GreenBitPipeline(BaseLLM):
         return "greenbit_pipeline"
 
     def _generate(
-        self,
-        prompts: List[str],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
+            self,
+            prompts: List[str],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
     ) -> LLMResult:
-        # List to hold all results
-        text_generations: List[str] = []
         pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
+        text_generations = []
+        skip_prompt = kwargs.get("skip_prompt", True)
 
         for i in range(0, len(prompts), self.batch_size):
-            batch_prompts = prompts[i : i + self.batch_size]
+            batch_prompts = prompts[i: i + self.batch_size]
 
             # Process batch of prompts
-            responses = self.pipeline(batch_prompts, **pipeline_kwargs)
+            responses = self.pipeline(
+                batch_prompts,
+                **pipeline_kwargs,
+            )
 
             # Process each response in the batch
-            for response in responses:
+            for j, response in enumerate(responses):
                 if isinstance(response, list):
                     # if model returns multiple generations, pick the top one
                     response = response[0]
@@ -159,10 +151,13 @@ class GreenBitPipeline(BaseLLM):
                 if self.pipeline.task == "text-generation":
                     text = response["generated_text"]
                 else:
-                    raise ValueError(f"Unsupported task: {self.pipeline.task}")
-
-                # Remove the prompt from the generated text
-                text = text[len(batch_prompts[0]):]
+                    raise ValueError(
+                        f"Got invalid task {self.pipeline.task}, "
+                        f"currently only {VALID_TASKS} are supported"
+                    )
+                if skip_prompt:
+                    text = text[len(batch_prompts[j]):]
+                # Append the processed text to results
                 text_generations.append(text)
 
         return LLMResult(
@@ -170,28 +165,30 @@ class GreenBitPipeline(BaseLLM):
         )
 
     def _stream(
-        self,
-        prompt: str,
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
+            self,
+            prompt: str,
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
     ) -> Iterator[GenerationChunk]:
-        pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
 
-        # Create stopping criteria
+        pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
+        skip_prompt = kwargs.get("skip_prompt", True)
+
         if stop is not None:
             stop_ids = [self.pipeline.tokenizer.encode(s)[-1] for s in stop]
             stopping_criteria = StoppingCriteriaList([StopOnTokens(stop_ids)])
         else:
             stopping_criteria = StoppingCriteriaList()
 
-        # Create TextIteratorStreamer
-        streamer = TextIteratorStreamer(self.pipeline.tokenizer, timeout=60.0, skip_prompt=True, skip_special_tokens=True)
-
-        # Prepare input
+        streamer = TextIteratorStreamer(
+            self.pipeline.tokenizer,
+            timeout=60.0,
+            skip_prompt=skip_prompt,
+            skip_special_tokens=True
+        )
         inputs = self.pipeline.tokenizer(prompt, return_tensors="pt").to(self.pipeline.device)
 
-        # Set generation parameters
         generation_kwargs = dict(
             **inputs,
             streamer=streamer,
@@ -199,11 +196,9 @@ class GreenBitPipeline(BaseLLM):
             **pipeline_kwargs,
         )
 
-        # Run generation in background thread
         thread = Thread(target=self.pipeline.model.generate, kwargs=generation_kwargs)
         thread.start()
 
-        # Yield generated text
         for new_text in streamer:
             chunk = GenerationChunk(text=new_text)
             yield chunk

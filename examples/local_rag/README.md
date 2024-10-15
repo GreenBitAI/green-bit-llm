@@ -28,12 +28,12 @@ This project demonstrates a local implementation of Retrieval-Augmented Generati
 Run the main script to execute all tasks:
 
 ```
-python run.py --model "GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0-mlx" \
-               --embedding_model "sentence-transformers/all-mpnet-base-v2" \
-               --query "What are the core method components of GraphRAG?" \
+CUDA_VISIBLE_DEVICES=0 \
+python -m examples.local_rag.run --model "GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0" \
+               --embedding_model "sentence-transformers/all-MiniLM-L6-v2" \
+               --query "What are the core components of GraphRAG?" \
                --max_tokens 300 \
-               --web_source "https://www.microsoft.com/en-us/research/blog/graphrag-unlocking-llm-discovery-on-narrative-private-data/" \
-               --device "cuda:0"
+               --web_source "https://www.microsoft.com/en-us/research/blog/graphrag-unlocking-llm-discovery-on-narrative-private-data/"
 ```
 
 This will perform the following tasks:

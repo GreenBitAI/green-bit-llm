@@ -13,3 +13,4 @@ prompt-toolkit
 rich
 optimum
 auto-gptq
+langchain-core
