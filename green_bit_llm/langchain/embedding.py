@@ -18,8 +18,7 @@ class GreenBitEmbeddings(BaseModel, Embeddings):
     which are based on the sentence-transformers package.
 
     Attributes:
-        model_name (str): The name of the embedding model to use.
-        model_kwargs (Dict[str, Any]): Additional keyword arguments for model initialization.
+        model (Any): Embedding model.
         encode_kwargs (Dict[str, Any]): Additional keyword arguments for the encoding process.
         device (str): The device to use for computations (e.g., 'cuda' for GPU).
 
@@ -39,15 +38,9 @@ class GreenBitEmbeddings(BaseModel, Embeddings):
         document_embeddings = embedder.embed_documents(texts)
         query_embedding = embedder.embed_query("What is the meaning of life?")
     """
-
-    model_name: str = DEFAULT_MODEL_NAME2
-    cache_dir: Optional[str] = None
+    cache_dir: Optional[str] = "~/.cache/huggingface/hub"
     """Path to store models. 
     Can be also set by SENTENCE_TRANSFORMERS_HOME environment variable."""
-    model_kwargs: Dict[str, Any] = Field(default_factory=dict)
-    """Keyword arguments to pass to the Sentence Transformer model, such as `device`,
-    `prompts`, `default_prompt_name`, `revision`, `trust_remote_code`, or `token`.
-    See also the Sentence Transformer documentation: https://sbert.net/docs/package_reference/SentenceTransformer.html#sentence_transformers.SentenceTransformer"""
     encode_kwargs: Dict[str, Any] = Field(default_factory=dict)
     """Keyword arguments to pass when calling the `encode` method of the Sentence
     Transformer model, such as `prompt_name`, `prompt`, `batch_size`, `precision`,
@@ -58,28 +51,10 @@ class GreenBitEmbeddings(BaseModel, Embeddings):
     show_progress: bool = False
     """Whether to show a progress bar."""
     device: str = "cuda"
-
-    _model: Any = None
+    model: Any = None
 
     def __init__(self, **data):
         super().__init__(**data)
-
-    def _initialize_model(self):
-        """Initialize the sentence-transformers model."""
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError:
-            raise ImportError(
-                "Could not import sentence_transformers. "
-                "Please install it with `pip install sentence-transformers`."
-            )
-
-        self._model = SentenceTransformer(
-            self.model_name,
-            device=self.device,
-            cache_folder=self.cache_dir,
-            **self.model_kwargs
-        )
 
     class Config:
         """Configuration for this pydantic object."""
@@ -99,11 +74,11 @@ class GreenBitEmbeddings(BaseModel, Embeddings):
         import sentence_transformers
         texts = list(map(lambda x: x.replace("\n", " "), texts))
         if self.multi_process:
-            pool = self._model.start_multi_process_pool()
-            embeddings = self._model.encode_multi_process(texts, pool)
+            pool = self.model.start_multi_process_pool()
+            embeddings = self.model.encode_multi_process(texts, pool)
             sentence_transformers.SentenceTransformer.stop_multi_process_pool(pool)
         else:
-            embeddings = self._model.encode(
+            embeddings = self.model.encode(
                 texts, show_progress_bar=self.show_progress, **self.encode_kwargs
             )
         return embeddings.tolist()
@@ -123,13 +98,13 @@ class GreenBitEmbeddings(BaseModel, Embeddings):
     @classmethod
     def from_model_id(
             cls,
-            model_name: str,
+            model_name: str = DEFAULT_MODEL_NAME1,
             device: str = "cuda",
-            cache_dir: Optional[str] = None,
+            cache_dir: Optional[str] = "",
             multi_process: bool = False,
             show_progress: bool = False,
-            model_kwargs: Optional[Dict[str, Any]] = None,
-            encode_kwargs: Optional[Dict[str, Any]] = None,
+            model_kwargs: Dict[str, Any] = Field(default_factory=dict),
+            encode_kwargs: Optional[Dict[str, Any]] = Field(default_factory=dict),
             **kwargs
     ) -> "GreenBitEmbeddings":
         """
@@ -151,13 +126,27 @@ class GreenBitEmbeddings(BaseModel, Embeddings):
         Returns:
             GreenBitEmbeddings: An instance of GreenBitEmbeddings.
         """
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            raise ImportError(
+                "Could not import sentence_transformers. "
+                "Please install it with `pip install sentence-transformers`."
+            )
+
+        model = SentenceTransformer(
+            model_name,
+            device=device,
+            cache_folder=cache_dir,
+            **model_kwargs
+        )
+
         return cls(
-            model_name=model_name,
+            model=model,
             device=device,
             cache_dir=cache_dir,
             multi_process=multi_process,
             show_progress=show_progress,
-            model_kwargs=model_kwargs or {},
             encode_kwargs=encode_kwargs or {},
             **kwargs
         )

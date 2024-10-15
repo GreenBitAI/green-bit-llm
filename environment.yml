@@ -21,3 +21,4 @@ dependencies:
       - rich
       - optimum
       - auto-gptq
+      - langchain-core

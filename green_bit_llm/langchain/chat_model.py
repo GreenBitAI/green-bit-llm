@@ -33,8 +33,7 @@ class ChatGreenBit(BaseChatModel):
 
             pipeline = GreenBitPipeline.from_model_id(
                 model_id="GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0",
-                device="cuda:0",
-                model_kwargs={"dtype": torch.half, "device_map": 'auto', "seqlen": 2048, "requires_grad": False},
+                model_kwargs={"dtype": torch.half, "seqlen": 2048, "requires_grad": False},
                 pipeline_kwargs={"max_new_tokens": 100, "temperature": 0.7},
             )
 
@@ -73,6 +72,9 @@ class ChatGreenBit(BaseChatModel):
             raise ValueError("Last message must be a HumanMessage!")
 
         messages_dicts = [self._to_chatml_format(m) for m in messages]
+
+        if not hasattr(self.llm, 'pipeline') or not hasattr(self.llm.pipeline, 'tokenizer'):
+            raise ValueError("LLM pipeline or tokenizer is not properly initialized")
 
         return self.llm.pipeline.tokenizer.apply_chat_template(
             messages_dicts, tokenize=False, add_generation_prompt=True

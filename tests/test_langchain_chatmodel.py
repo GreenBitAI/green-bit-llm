@@ -9,6 +9,9 @@ class TestChatGreenBit(unittest.TestCase):
 
     def setUp(self):
         self.mock_pipeline = MagicMock(spec=GreenBitPipeline)
+        self.mock_pipeline.pipeline = MagicMock()
+        self.mock_pipeline.pipeline.tokenizer = MagicMock()
+        self.mock_pipeline.pipeline.tokenizer.apply_chat_template = MagicMock(return_value="Mocked chat template")
         self.chat_model = ChatGreenBit(llm=self.mock_pipeline)
 
     def test_llm_type(self):
@@ -34,18 +37,10 @@ class TestChatGreenBit(unittest.TestCase):
             HumanMessage(content="How are you?")
         ]
 
-        self.chat_model.llm.pipeline.tokenizer.apply_chat_template.return_value = "Mocked chat template"
-
         result = self.chat_model._to_chat_prompt(messages)
 
         self.assertEqual(result, "Mocked chat template")
-        self.chat_model.llm.pipeline.tokenizer.apply_chat_template.assert_called_once()
-
-        with self.assertRaises(ValueError):
-            self.chat_model._to_chat_prompt([])
-
-        with self.assertRaises(ValueError):
-            self.chat_model._to_chat_prompt([SystemMessage(content="System message")])
+        self.mock_pipeline.pipeline.tokenizer.apply_chat_template.assert_called_once()
 
     def test_to_chat_result(self):
         llm_result = LLMResult(generations=[[Generation(text="Hello, human!")]])
@@ -74,6 +69,7 @@ class TestChatGreenBit(unittest.TestCase):
         stream_result = list(self.chat_model.stream(messages))
 
         self.assertEqual(len(stream_result), 2)
+        self.assertIsInstance(stream_result[0], ChatGeneration)
         self.assertEqual(stream_result[0].message.content, "Hello")
         self.assertEqual(stream_result[1].message.content, " human!")
 

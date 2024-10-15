@@ -7,9 +7,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 
 from green_bit_llm.langchain import GreenBitPipeline, ChatGreenBit, GreenBitEmbeddings
-
+import torch
 import re
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
 # Helper function to format documents
 def format_docs(docs):
@@ -54,20 +56,27 @@ def prepare_data(url):
     return all_splits
 
 # Create vector store
-def create_vectorstore(documents, embedding_model, device):
+def create_vectorstore(documents, embedding_model):
+    model_kwargs = {'trust_remote_code': True}
+    encode_kwargs = {'normalize_embeddings': False}
+
     greenbit_embeddings = GreenBitEmbeddings.from_model_id(
-        embedding_model,
-        device=device
+        model_name=embedding_model,
+        cache_dir="cache",
+        multi_process=False,
+        model_kwargs=model_kwargs,
+        encode_kwargs=encode_kwargs
     )
     return Chroma.from_documents(documents=documents, embedding=greenbit_embeddings)
 
 # Initialize GreenBit model
-def init_greenbit_model(model_id, max_tokens, device):
+def init_greenbit_model(model_id, max_tokens):
     pipeline = GreenBitPipeline.from_model_id(
         model_id=model_id,
-        device=device,
-        pipeline_kwargs={"max_new_tokens": max_tokens, "temperature": 0.7}
+        model_kwargs={"dtype": torch.half, "seqlen": 2048, "device_map": "auto"},
+        pipeline_kwargs={"max_new_tokens": max_tokens, "temperature": 0.7, "do_sample": True},
     )
+
     return ChatGreenBit(llm=pipeline)
 
 
@@ -75,14 +84,14 @@ def init_greenbit_model(model_id, max_tokens, device):
 def simulate_rap_battle(model):
     print_task_separator("Rap Battle Simulation")
     prompt = "Simulate a rap battle between rag and graphRag."
-    response = model.predict(prompt)
-    print(response)
+    response = model.invoke(prompt)
+    print(response.content)
 
 
 # Task 2: Summarization
 def summarize_docs(model, vectorstore, question):
     print_task_separator("Summarization")
-    prompt_template = "Summarize the main themes in these retrieved docs in a single, complete sentence of no more than 100 words: {docs}"
+    prompt_template = "Summarize the main themes in these retrieved docs in a single, complete sentence of no more than 200 words: {docs}"
     prompt = ChatPromptTemplate.from_template(prompt_template)
 
     chain = (
@@ -150,13 +159,13 @@ def qa_with_retrieval(model, vectorstore, question):
 
 
 
-def main(model_id, embedding_model, query, max_tokens, web_source, device):
+def main(model_id, embedding_model, query, max_tokens, web_source):
     print_task_separator("Initialization")
     print("Preparing data and initializing model...")
     # Prepare data and initialize model
     all_splits = prepare_data(web_source)
-    vectorstore = create_vectorstore(all_splits, embedding_model, device)
-    model = init_greenbit_model(model_id, max_tokens, device)
+    vectorstore = create_vectorstore(all_splits, embedding_model)
+    model = init_greenbit_model(model_id, max_tokens)
     print("Initialization complete.")
 
     # Execute tasks
@@ -169,13 +178,12 @@ def main(model_id, embedding_model, query, max_tokens, web_source, device):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run NLP tasks with specified model, query, max tokens, and web source.")
-    parser.add_argument("--model", type=str, default="GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0-mlx", help="Model ID to use for the tasks")
-    parser.add_argument("--embedding_model", type=str, default="sentence-transformers/all-mpnet-base-v2", help="Embedding model to use for vector store creation")
+    parser.add_argument("--model", type=str, default="GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0", help="Model ID to use for the tasks")
+    parser.add_argument("--embedding_model", type=str, default="sentence-transformers/all-MiniLM-L6-v2", help="Embedding model to use for vector store creation")
     parser.add_argument("--query", type=str, required=True, help="Query to use for the tasks")
     parser.add_argument("--max_tokens", type=int, default=200, help="Maximum number of tokens for model output (default: 200)")
     parser.add_argument("--web_source", type=str, default="https://www.microsoft.com/en-us/research/blog/graphrag-unlocking-llm-discovery-on-narrative-private-data/",
                         help="URL of the web source to load data from (default: Microsoft Research blog post on GraphRAG)")
-    parser.add_argument("--device", type=str, default="cuda:0", help="Device to use for computations (default: cuda:0)")
     args = parser.parse_args()
 
-    main(args.model, args.embedding_model, args.query, args.max_tokens, args.web_source, args.device)
+    main(args.model, args.embedding_model, args.query, args.max_tokens, args.web_source)

@@ -48,7 +48,7 @@ chat = ChatGreenBit(llm=pipeline)
 
 # normal generation
 response = chat.invoke("What is the capital of France?")
-print(response)
+print(response.content)
 
 # stream generation
 for chunk in chat.stream([HumanMessage(content="Tell me a story about a brave knight.")]):
