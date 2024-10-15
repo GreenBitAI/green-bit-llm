@@ -21,7 +21,7 @@ setup(
     url="https://github.com/GreenBitAI/green-bit-llm",
     license="Apache-2.0",
     install_requires=requirements,
-    packages=find_packages(),
+    packages=find_packages(where=".", exclude=["tests", "tests.*", "examples", "examples.*"]),
     python_requires=">=3.9",
     data_files=[('.', ['requirements.txt'])],
 )
