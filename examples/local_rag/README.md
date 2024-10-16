@@ -30,7 +30,7 @@ Run the main script to execute all tasks:
 ```
 CUDA_VISIBLE_DEVICES=0 \
 python -m examples.local_rag.run --model "GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0" \
-               --embedding_model "sentence-transformers/all-MiniLM-L6-v2" \
+               --embedding_model "sentence-transformers/all-MiniLM-L12-v2" \
                --query "What are the core components of GraphRAG?" \
                --max_tokens 300 \
                --web_source "https://www.microsoft.com/en-us/research/blog/graphrag-unlocking-llm-discovery-on-narrative-private-data/"
