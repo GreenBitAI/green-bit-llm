@@ -64,6 +64,7 @@ def create_vectorstore(documents, embedding_model):
         model_name=embedding_model,
         cache_dir="cache",
         multi_process=False,
+        show_progress=False,
         model_kwargs=model_kwargs,
         encode_kwargs=encode_kwargs
     )
@@ -179,7 +180,7 @@ def main(model_id, embedding_model, query, max_tokens, web_source):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run NLP tasks with specified model, query, max tokens, and web source.")
     parser.add_argument("--model", type=str, default="GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0", help="Model ID to use for the tasks")
-    parser.add_argument("--embedding_model", type=str, default="sentence-transformers/all-MiniLM-L6-v2", help="Embedding model to use for vector store creation")
+    parser.add_argument("--embedding_model", type=str, default="sentence-transformers/all-MiniLM-L12-v2", help="Embedding model to use for vector store creation")
     parser.add_argument("--query", type=str, required=True, help="Query to use for the tasks")
     parser.add_argument("--max_tokens", type=int, default=200, help="Maximum number of tokens for model output (default: 200)")
     parser.add_argument("--web_source", type=str, default="https://www.microsoft.com/en-us/research/blog/graphrag-unlocking-llm-discovery-on-narrative-private-data/",

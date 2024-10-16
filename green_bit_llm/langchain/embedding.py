@@ -3,7 +3,7 @@ from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, Field
 
 # good balance between performance and efficiency, params: 22M
-DEFAULT_MODEL_NAME1 = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_MODEL_NAME1 = "sentence-transformers/all-MiniLM-L12-v2"
 # params: 110M, better NLU ability
 DEFAULT_MODEL_NAME2 = "sentence-transformers/all-mpnet-base-v2"
 # Optimized for multi-round question answering and suitable for applications
