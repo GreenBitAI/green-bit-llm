@@ -6,7 +6,7 @@ GreenBit Langchain Demos showcase the integration of GreenBit language models wi
 
 ## Installation
 
-### Step 1: Install the gbx_lm Package
+### Step 1: Install the green-bit-llm Package
 
 ```bash
 pip install green-bit-llm
