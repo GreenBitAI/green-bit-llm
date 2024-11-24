@@ -55,8 +55,25 @@ class ChatGreenBit(BaseChatModel):
             **kwargs: Any,
     ) -> ChatResult:
         llm_input = self._to_chat_prompt(messages)
+
+        # maintain all generation related args
+        generation_kwargs = {
+            "temperature": kwargs.get("temperature", 0.7),
+            "top_p": kwargs.get("top_p", 1.0),
+            "repetition_penalty": kwargs.get("repetition_penalty", 1.0),
+            "repetition_context_size": kwargs.get("repetition_context_size", 20),
+            "with_hidden_states": kwargs.get("with_hidden_states", False),
+            "remote_score": kwargs.get("remote_score", True),
+        }
+
+        if "logit_bias" in kwargs:
+            generation_kwargs["logit_bias"] = kwargs["logit_bias"]
+
         llm_result = self.llm._generate(
-            prompts=[llm_input], stop=stop, run_manager=run_manager, **kwargs
+            prompts=[llm_input],
+            stop=stop,
+            run_manager=run_manager,
+            **generation_kwargs
         )
         return self._to_chat_result(llm_result)
 
@@ -95,17 +112,66 @@ class ChatGreenBit(BaseChatModel):
 
     @staticmethod
     def _to_chat_result(llm_result: LLMResult) -> ChatResult:
+        """Convert LLM result to chat result, preserving hidden states on their original device."""
         chat_generations = []
 
-        for g in llm_result.generations[0]:
-            chat_generation = ChatGeneration(
-                message=AIMessage(content=g.text), generation_info=g.generation_info
-            )
-            chat_generations.append(chat_generation)
+        for gen_list in llm_result.generations:
+            for g in gen_list:
+                generation_info = g.generation_info or {}
+
+                hidden_states = generation_info.get("hidden_states")
+                additional_kwargs = {}
+
+                if hidden_states is not None:
+                    additional_kwargs["hidden_states"] = hidden_states
+
+                message = AIMessage(
+                    content=g.text,
+                    additional_kwargs=additional_kwargs
+                )
+
+                chat_generation = ChatGeneration(
+                    message=message,
+                    generation_info=generation_info
+                )
+                chat_generations.append(chat_generation)
 
         return ChatResult(
-            generations=chat_generations, llm_output=llm_result.llm_output
+            generations=chat_generations,
+            llm_output=llm_result.llm_output
         )
+
+    async def agenerate(
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+    ) -> ChatResult:
+        """async generation function"""
+        raise NotImplementedError("Async generation not implemented yet")
+
+    def stream(
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+    ):
+        """ streaming output not support hidden states"""
+        prompt = self._to_chat_prompt(messages)
+        for chunk in self.llm._stream(prompt, stop=stop, run_manager=run_manager, **kwargs):
+            yield ChatGeneration(message=AIMessage(content=chunk.text))
+
+    async def astream(
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+    ):
+        """async streaming output"""
+        raise NotImplementedError("Async stream generation not implemented yet")
 
     def bind_tools(
             self,
@@ -146,15 +212,3 @@ class ChatGreenBit(BaseChatModel):
                 )
             kwargs["tool_choice"] = tool_choice
         return super().bind(tools=formatted_tools, **kwargs)
-
-    def stream(
-            self,
-            messages: List[BaseMessage],
-            stop: Optional[List[str]] = None,
-            run_manager: Optional[CallbackManagerForLLMRun] = None,
-            **kwargs: Any,
-    ):
-        """Streams the responses from the model."""
-        prompt = self._to_chat_prompt(messages)
-        for chunk in self.llm._stream(prompt, stop=stop, run_manager=run_manager, **kwargs):
-            yield ChatGeneration(message=AIMessage(content=chunk.text))

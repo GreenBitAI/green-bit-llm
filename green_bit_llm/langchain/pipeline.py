@@ -131,38 +131,64 @@ class GreenBitPipeline(BaseLLM):
     ) -> LLMResult:
         pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
         text_generations = []
+        hidden_states_list = []
         skip_prompt = kwargs.get("skip_prompt", True)
+        with_hidden_states = kwargs.get("with_hidden_states", False)
 
         for i in range(0, len(prompts), self.batch_size):
             batch_prompts = prompts[i: i + self.batch_size]
 
-            # Process batch of prompts
-            responses = self.pipeline(
+            # get attention mask of inputs
+            inputs = self.pipeline.tokenizer(
                 batch_prompts,
+                return_tensors="pt",
+                padding=True
+            ).to(self.pipeline.device)
+
+            # modifies pipeline kwargs for getting hidden states
+            if with_hidden_states:
+                pipeline_kwargs["output_hidden_states"] = True
+
+            # get llm responses
+            outputs = self.pipeline.model.generate(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
                 **pipeline_kwargs,
+                return_dict_in_generate=True,
+                output_scores=True,
             )
 
-            # Process each response in the batch
-            for j, response in enumerate(responses):
-                if isinstance(response, list):
-                    # if model returns multiple generations, pick the top one
-                    response = response[0]
+            # processing hidden states
+            if with_hidden_states:
+                hidden_layer = -1
+                # get hidden states of inputs
+                input_tokens_hs = outputs.hidden_states[0][hidden_layer]
+                # use attention mask
+                mask = inputs["attention_mask"].unsqueeze(2)
+                input_tokens_hs = input_tokens_hs * mask
+                # calculates mean
+                batch_embeddings = torch.sum(input_tokens_hs, dim=1) / torch.sum(mask, dim=1)
+                hidden_states_list.extend([emb.detach() for emb in batch_embeddings])
 
-                if self.pipeline.task == "text-generation":
-                    text = response["generated_text"]
-                else:
-                    raise ValueError(
-                        f"Got invalid task {self.pipeline.task}, "
-                        f"currently only {VALID_TASKS} are supported"
-                    )
+            generated_texts = self.pipeline.tokenizer.batch_decode(
+                outputs.sequences,
+                skip_special_tokens=True
+            )
+
+            for j, text in enumerate(generated_texts):
                 if skip_prompt:
                     text = text[len(batch_prompts[j]):]
-                # Append the processed text to results
                 text_generations.append(text)
 
-        return LLMResult(
-            generations=[[Generation(text=text)] for text in text_generations]
-        )
+        generations = []
+        for i, text in enumerate(text_generations):
+            generation_info = {}
+            if with_hidden_states and i < len(hidden_states_list):
+                generation_info["hidden_states"] = hidden_states_list[i]
+
+            generations.append([Generation(text=text, generation_info=generation_info)])
+
+        return LLMResult(generations=generations)
 
     def _stream(
             self,
