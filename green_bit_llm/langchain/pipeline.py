@@ -130,6 +130,19 @@ class GreenBitPipeline(BaseLLM):
             **kwargs: Any,
     ) -> LLMResult:
         pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
+
+        # Handle max_tokens parameter
+        if "max_new_tokens" in kwargs:
+            pipeline_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
+        elif "max_tokens" in kwargs:
+            pipeline_kwargs["max_new_tokens"] = kwargs["max_tokens"]
+
+        # Other existing kwargs
+        pipeline_kwargs.update({
+            k: v for k, v in kwargs.items()
+            if k not in ["max_new_tokens", "max_tokens", "skip_prompt", "with_hidden_states"]
+        })
+
         text_generations = []
         hidden_states_list = []
         skip_prompt = kwargs.get("skip_prompt", True)
@@ -199,6 +212,19 @@ class GreenBitPipeline(BaseLLM):
     ) -> Iterator[GenerationChunk]:
 
         pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
+
+        # Handle max_tokens parameter
+        if "max_new_tokens" in kwargs:
+            pipeline_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
+        elif "max_tokens" in kwargs:
+            pipeline_kwargs["max_new_tokens"] = kwargs["max_tokens"]
+
+        # Other existing kwargs
+        pipeline_kwargs.update({
+            k: v for k, v in kwargs.items()
+            if k not in ["max_new_tokens", "max_tokens", "skip_prompt"]
+        })
+
         skip_prompt = kwargs.get("skip_prompt", True)
 
         if stop is not None:
