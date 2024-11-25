@@ -333,13 +333,13 @@ class CompletionRequest(BaseModel):
     @validator('prompt')
     def validate_prompt(cls, v):
         if isinstance(v, list):
-            if not v:  # 空列表
+            if not v:  # empty list
                 raise ValueError("Prompt list cannot be empty")
-            if not all(isinstance(p, str) for p in v):  # 确保所有元素都是字符串
+            if not all(isinstance(p, str) for p in v):
                 raise ValueError("All prompts must be strings")
-            if any(not p.strip() for p in v):  # 检查空字符串
+            if any(not p.strip() for p in v):
                 raise ValueError("Prompts cannot be empty strings")
-        elif not v.strip():  # 单个字符串的情况
+        elif not v.strip():
             raise ValueError("Prompt cannot be empty")
         return v
 
@@ -430,7 +430,17 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
     request_id = f"cmpl-{uuid.uuid4()}"
 
     try:
-        for chunk in chat_model.stream(request.prompt):
+        # Prepare and wrap generation parameters
+        generation_kwargs = {
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "max_new_tokens": request.max_tokens
+        }
+        wrapped_kwargs = {
+            "pipeline_kwargs": generation_kwargs
+        }
+
+        for chunk in chat_model.stream(request.prompt, **wrapped_kwargs):
             response = {
                 "id": request_id,
                 "object": "text_completion",
@@ -459,7 +469,17 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
     request_id = f"chatcmpl-{uuid.uuid4()}"
 
     try:
-        for chunk in chat_model.stream(messages):
+        # Prepare and wrap generation parameters
+        generation_kwargs = {
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "max_new_tokens": request.max_tokens
+        }
+        wrapped_kwargs = {
+            "pipeline_kwargs": generation_kwargs
+        }
+
+        for chunk in chat_model.stream(messages, **wrapped_kwargs):
             response = {
                 "id": request_id,
                 "object": "chat.completion.chunk",
@@ -494,10 +514,16 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
             "top_p": request.top_p,
             "repetition_penalty": request.repetition_penalty,
             "repetition_context_size": request.repetition_context_size,
-            "with_hidden_states": request.with_hidden_states,
+            "max_tokens": request.max_tokens
         }
         if request.logit_bias:
             generation_kwargs["logit_bias"] = request.logit_bias
+
+        # Wrap generation parameters
+        wrapped_kwargs = {
+            "pipeline_kwargs": generation_kwargs,
+            "with_hidden_states": request.with_hidden_states
+        }
 
         prompts = request.prompt if isinstance(request.prompt, list) else [request.prompt]
 
@@ -506,7 +532,7 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
             thread_pool,
             lambda: chat_model.llm._generate(
                 prompts=prompts,
-                **generation_kwargs
+                **wrapped_kwargs
             )
         )
 
@@ -535,11 +561,16 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
                     lambda: hidden_states.cpu().tolist()
                 )
 
+            # Let tokenizer determine if max_tokens was reached
+            tokenizer = chat_model.llm.pipeline.tokenizer
+            generated_text = generations[0].text
+            finish_reason = "length" if len(tokenizer.encode(generated_text)) >= request.max_tokens else "stop"
+
             choices.append({
                 "text": generations[0].text,
                 "index": idx,
                 "logprobs": None,
-                "finish_reason": "stop",
+                "finish_reason": finish_reason,
                 "hidden_states": hidden_states,
                 "confidence_score": score[idx] if score else None
             })
@@ -608,10 +639,16 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
             "top_p": request.top_p,
             "repetition_penalty": request.repetition_penalty,
             "repetition_context_size": request.repetition_context_size,
-            "with_hidden_states": request.with_hidden_states,
+            "max_tokens": request.max_tokens
         }
         if request.logit_bias:
             generation_kwargs["logit_bias"] = request.logit_bias
+
+        # Wrap generation parameters
+        wrapped_kwargs = {
+            "pipeline_kwargs": generation_kwargs,
+            "with_hidden_states": request.with_hidden_states
+        }
 
         # thread pool
         prompts = await asyncio.gather(*[
@@ -628,7 +665,7 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
             thread_pool,
             lambda: chat_model.llm._generate(
                 prompts=prompts,
-                **generation_kwargs
+                **wrapped_kwargs
             )
         )
 
@@ -658,6 +695,11 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
                     lambda: hidden_states.cpu().tolist()
                 )
 
+            # Let tokenizer determine if max_tokens was reached
+            tokenizer = chat_model.llm.pipeline.tokenizer
+            generated_text = generations[0].text
+            finish_reason = "length" if len(tokenizer.encode(generated_text)) >= request.max_tokens else "stop"
+
             choices.append({
                 "message": {
                     "role": "assistant",
@@ -666,7 +708,7 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
                     "confidence_score": score[idx] if score else None
                 },
                 "index": idx,
-                "finish_reason": "stop"
+                "finish_reason": finish_reason
             })
 
         async def calculate_tokens():

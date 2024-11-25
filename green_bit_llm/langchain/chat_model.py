@@ -62,18 +62,28 @@ class ChatGreenBit(BaseChatModel):
             "top_p": kwargs.get("top_p", 1.0),
             "repetition_penalty": kwargs.get("repetition_penalty", 1.0),
             "repetition_context_size": kwargs.get("repetition_context_size", 20),
-            "with_hidden_states": kwargs.get("with_hidden_states", False),
-            "remote_score": kwargs.get("remote_score", True),
         }
+
+        # Handle max_tokens parameter
+        if "max_tokens" in kwargs:
+            generation_kwargs["max_new_tokens"] = kwargs["max_tokens"]
+        elif "max_new_tokens" in kwargs:
+            generation_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
 
         if "logit_bias" in kwargs:
             generation_kwargs["logit_bias"] = kwargs["logit_bias"]
+
+        # Wrap generation parameters in pipeline_kwargs
+        wrapped_kwargs = {
+            "pipeline_kwargs": generation_kwargs,
+            "with_hidden_states": kwargs.get("with_hidden_states", False),  # Keep this outside for pipeline's own use
+        }
 
         llm_result = self.llm._generate(
             prompts=[llm_input],
             stop=stop,
             run_manager=run_manager,
-            **generation_kwargs
+            **wrapped_kwargs
         )
         return self._to_chat_result(llm_result)
 
@@ -158,9 +168,33 @@ class ChatGreenBit(BaseChatModel):
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ):
-        """ streaming output not support hidden states"""
+        """streaming output not support hidden states"""
         prompt = self._to_chat_prompt(messages)
-        for chunk in self.llm._stream(prompt, stop=stop, run_manager=run_manager, **kwargs):
+
+        # Handle generation parameters
+        generation_kwargs = {
+            "temperature": kwargs.get("temperature", 0.7),
+            "top_p": kwargs.get("top_p", 1.0)
+        }
+
+        # Handle max_tokens parameter
+        if "max_tokens" in kwargs:
+            generation_kwargs["max_new_tokens"] = kwargs["max_tokens"]
+        elif "max_new_tokens" in kwargs:
+            generation_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
+
+        # Wrap parameters correctly
+        wrapped_kwargs = {
+            "pipeline_kwargs": generation_kwargs,
+            "skip_prompt": kwargs.get("skip_prompt", True)
+        }
+
+        for chunk in self.llm._stream(
+                prompt,
+                stop=stop,
+                run_manager=run_manager,
+                **wrapped_kwargs
+        ):
             yield ChatGeneration(message=AIMessage(content=chunk.text))
 
     async def astream(
