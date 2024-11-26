@@ -111,11 +111,11 @@ def parse_args():
                 python api_key_management.py --name "John Doe" --email "john@example.com" --org "Example Inc" --tier premium
                 or add the user information into an .env file:
                 # .env
-                GREENBIT_USER_NAME="Haojin Yang"
-                GREENBIT_USER_EMAIL="haojin.yang@greenbit.ai"
-                GREENBIT_ORGANIZATION="GreenBitAI"
-                GREENBIT_API_TIER="standard"
-                GREENBIT_DB_PATH="db/greenbit.db"
+                LIBRA_USER_NAME="Haojin Yang"
+                LIBRA_USER_EMAIL="haojin.yang@greenbit.ai"
+                LIBRA_ORGANIZATION="GreenBitAI"
+                LIBRA_API_TIER="standard"
+                LIBRA_DB_PATH="db/greenbit.db"
                 # load
                 python api_key_management.py --env-file .env  # Load from environment file
             
@@ -274,11 +274,11 @@ def load_config(args):
 
     # Priority: command line args > env vars > defaults
     config = {
-        'name': args.name or os.getenv('GREENBIT_USER_NAME'),
-        'email': args.email or os.getenv('GREENBIT_USER_EMAIL'),
-        'organization': args.org or os.getenv('GREENBIT_ORGANIZATION'),
-        'tier': args.tier or os.getenv('GREENBIT_API_TIER', 'basic'),
-        'db_path': os.getenv('GREENBIT_DB_PATH', 'db/greenbit.db')
+        'name': args.name or os.getenv('LIBRA_USER_NAME'),
+        'email': args.email or os.getenv('LIBRA_USER_EMAIL'),
+        'organization': args.org or os.getenv('LIBRA_ORGANIZATION'),
+        'tier': args.tier or os.getenv('LIBRA_API_TIER', 'basic'),
+        'db_path': os.getenv('LIBRA_DB_PATH', 'db/greenbit.db')
     }
 
     # Validate required fields
@@ -312,7 +312,7 @@ def main():
         # Optionally save to .env file
         if args.env_file:
             with open(args.env_file, 'a') as f:
-                f.write(f"\nGREENBIT_API_KEY={api_key}")
+                f.write(f"\nLIBRA_API_KEY={api_key}")
                 print(f"\nAPI key has been added to {args.env_file}")
 
     except Exception as e:
