@@ -25,7 +25,7 @@ class ConfidenceScorer:
             self,
             parameters_path: str,
             model_id: str,
-            device: str = "mps"
+            device: str = "cuda"
     ):
         """
         Initialize the ConfidenceScore calculator.

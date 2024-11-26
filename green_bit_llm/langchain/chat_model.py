@@ -59,9 +59,6 @@ class ChatGreenBit(BaseChatModel):
         # maintain all generation related args
         generation_kwargs = {
             "temperature": kwargs.get("temperature", 0.7),
-            "top_p": kwargs.get("top_p", 1.0),
-            "repetition_penalty": kwargs.get("repetition_penalty", 1.0),
-            "repetition_context_size": kwargs.get("repetition_context_size", 20),
         }
 
         # Handle max_tokens parameter
@@ -69,9 +66,6 @@ class ChatGreenBit(BaseChatModel):
             generation_kwargs["max_new_tokens"] = kwargs["max_tokens"]
         elif "max_new_tokens" in kwargs:
             generation_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
-
-        if "logit_bias" in kwargs:
-            generation_kwargs["logit_bias"] = kwargs["logit_bias"]
 
         # Wrap generation parameters in pipeline_kwargs
         wrapped_kwargs = {
@@ -173,8 +167,7 @@ class ChatGreenBit(BaseChatModel):
 
         # Handle generation parameters
         generation_kwargs = {
-            "temperature": kwargs.get("temperature", 0.7),
-            "top_p": kwargs.get("top_p", 1.0)
+            "temperature": kwargs.get("temperature", 0.7)
         }
 
         # Handle max_tokens parameter
