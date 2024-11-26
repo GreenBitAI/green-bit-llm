@@ -145,7 +145,7 @@ def load_api_key(env_file: str = None) -> str:
     if env_file and Path(env_file).exists():
         load_dotenv(env_file)
 
-    api_key = os.getenv("GREENBIT_API_KEY")
+    api_key = os.getenv("LIBRA_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=HTTP_403_FORBIDDEN,
@@ -165,7 +165,7 @@ async def get_api_key_auth(
     if not api_key:
         api_key = load_api_key(env_file)
 
-    db_path = os.getenv("GREENBIT_DB_PATH", str(Path(__file__).parent.parent.parent.parent / "db" / "greenbit.db"))
+    db_path = os.getenv("LIBRA_DB_PATH", str(Path(__file__).parent.parent.parent.parent / "db" / "greenbit.db"))
     auth_handler = APIKeyAuth(db_path)
     user_info = auth_handler.validate_api_key(api_key)
     await auth_handler.check_rate_limits(api_key, user_info, estimated_tokens)

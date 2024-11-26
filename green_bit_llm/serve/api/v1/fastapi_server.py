@@ -12,8 +12,8 @@ from dataclasses import dataclass
 import torch
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, validator
-from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel, field_validator, ValidationInfo
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from green_bit_llm.langchain import GreenBitPipeline, ChatGreenBit
 from transformers import AutoTokenizer
 import asyncio
@@ -206,7 +206,7 @@ def parse_args():
                         help="Allow loading remote code in tokenizer")
     parser.add_argument("--seqlen", type=int, default=2048, help="Maximum sequence length")
     parser.add_argument("--device_map", type=str, default="auto", help="Device mapping strategy")
-    parser.add_argument("--env-file", type=str, default=".env", help="Path to .env file")
+    parser.add_argument("--env_file", type=str, default=".env", help="Path to .env file")
 
     return parser.parse_args()
 
@@ -252,7 +252,7 @@ class ModelProvider:
             tokenizer = AutoTokenizer.from_pretrained(
                 model_path,
                 trust_remote_code=self.cli_args.trust_remote_code,
-                eos_token=self.cli_args.eos_token
+                eos_token="<|im_end|>" if model_path.lower().__contains__("qwen") else "<|eot_id|>",
             )
 
             # Configure chat template
@@ -329,11 +329,13 @@ class CompletionRequest(BaseModel):
     repetition_context_size: int = 20
     with_hidden_states: bool = False
     remote_score: bool = True
+    api_key: str = ""
 
-    @validator('prompt')
+    @field_validator('prompt')
+    @classmethod
     def validate_prompt(cls, v):
         if isinstance(v, list):
-            if not v:  # empty list
+            if not v:
                 raise ValueError("Prompt list cannot be empty")
             if not all(isinstance(p, str) for p in v):
                 raise ValueError("All prompts must be strings")
@@ -343,9 +345,11 @@ class CompletionRequest(BaseModel):
             raise ValueError("Prompt cannot be empty")
         return v
 
-    @validator('stream', 'with_hidden_states')
-    def validate_stream_with_batch(cls, v, values):
-        if v and isinstance(values.get('prompt'), list) and len(values.get('prompt', [])) > 1:
+    @field_validator('stream', 'with_hidden_states')
+    @classmethod
+    def validate_stream_with_batch(cls, v, info: ValidationInfo):
+        prompt = info.data.get('prompt')
+        if v and isinstance(prompt, list) and len(prompt) > 1:
             raise ValueError("Streaming is not supported with batch requests")
         return v
 
@@ -381,8 +385,10 @@ class ChatCompletionRequest(BaseModel):
     repetition_context_size: int = 20
     with_hidden_states: bool = False
     remote_score: bool = True
+    api_key: str = ""
 
-    @validator('messages')
+    @field_validator('messages')
+    @classmethod
     def validate_messages(cls, v):
         if not v:
             raise ValueError("Messages cannot be empty")
@@ -416,9 +422,10 @@ class ChatCompletionRequest(BaseModel):
             if not isinstance(msg['content'], str) or not msg['content'].strip():
                 raise ValueError("Message content must be a non-empty string")
 
-    @validator('stream', 'with_hidden_states')
-    def validate_stream_with_batch(cls, v, values):
-        messages = values.get('messages', [])
+    @field_validator('stream', 'with_hidden_states')
+    @classmethod
+    def validate_stream_with_batch(cls, v, info: ValidationInfo):
+        messages = info.data.get('messages', [])
         is_batch = isinstance(messages, list) and messages and isinstance(messages[0], list)
         if v and is_batch and len(messages) > 1:
             raise ValueError("Streaming is not supported with batch requests")
@@ -433,14 +440,16 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
         # Prepare and wrap generation parameters
         generation_kwargs = {
             "temperature": request.temperature,
-            "top_p": request.top_p,
             "max_new_tokens": request.max_tokens
         }
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs
         }
 
-        for chunk in chat_model.stream(request.prompt, **wrapped_kwargs):
+        # Convert string prompt to HumanMessage
+        messages = [HumanMessage(content=request.prompt)]
+
+        for chunk in chat_model.stream(messages, **wrapped_kwargs):
             response = {
                 "id": request_id,
                 "object": "text_completion",
@@ -464,7 +473,7 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
 
 
 async def stream_chat_completion(request: ChatCompletionRequest, chat_model: ChatGreenBit,
-                                 messages: List):
+                               messages_list: List[List[BaseMessage]]):
     created = int(time.time())
     request_id = f"chatcmpl-{uuid.uuid4()}"
 
@@ -472,14 +481,13 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
         # Prepare and wrap generation parameters
         generation_kwargs = {
             "temperature": request.temperature,
-            "top_p": request.top_p,
             "max_new_tokens": request.max_tokens
         }
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs
         }
 
-        for chunk in chat_model.stream(messages, **wrapped_kwargs):
+        for chunk in chat_model.stream(messages_list[0], **wrapped_kwargs):
             response = {
                 "id": request_id,
                 "object": "chat.completion.chunk",
@@ -511,13 +519,8 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
     try:
         generation_kwargs = {
             "temperature": request.temperature,
-            "top_p": request.top_p,
-            "repetition_penalty": request.repetition_penalty,
-            "repetition_context_size": request.repetition_context_size,
             "max_tokens": request.max_tokens
         }
-        if request.logit_bias:
-            generation_kwargs["logit_bias"] = request.logit_bias
 
         # Wrap generation parameters
         wrapped_kwargs = {
@@ -555,11 +558,12 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
                             hidden_states
                         )
                         score = scores if isinstance(scores, list) else [scores]
-
-                hidden_states = await asyncio.get_event_loop().run_in_executor(
-                    thread_pool,
-                    lambda: hidden_states.cpu().tolist()
-                )
+                    hidden_states=None
+                else:
+                    hidden_states = await asyncio.get_event_loop().run_in_executor(
+                        thread_pool,
+                        lambda: hidden_states.cpu().tolist()
+                    )
 
             # Let tokenizer determine if max_tokens was reached
             tokenizer = chat_model.llm.pipeline.tokenizer
@@ -637,12 +641,8 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
         generation_kwargs = {
             "temperature": request.temperature,
             "top_p": request.top_p,
-            "repetition_penalty": request.repetition_penalty,
-            "repetition_context_size": request.repetition_context_size,
             "max_tokens": request.max_tokens
         }
-        if request.logit_bias:
-            generation_kwargs["logit_bias"] = request.logit_bias
 
         # Wrap generation parameters
         wrapped_kwargs = {
@@ -689,11 +689,13 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
                         )
                         score = scores if isinstance(scores, list) else [scores]
 
-                # CPU ops in thread pool
-                hidden_states = await asyncio.get_event_loop().run_in_executor(
-                    thread_pool,
-                    lambda: hidden_states.cpu().tolist()
-                )
+                    hidden_states = None
+                else:
+                    # CPU ops in thread pool
+                    hidden_states = await asyncio.get_event_loop().run_in_executor(
+                        thread_pool,
+                        lambda: hidden_states.cpu().tolist()
+                    )
 
             # Let tokenizer determine if max_tokens was reached
             tokenizer = chat_model.llm.pipeline.tokenizer
@@ -798,7 +800,7 @@ def create_app(args):
         load_dotenv(args.env_file)
 
     # Update DB path from environment if provided
-    db_path = os.getenv("GREENBIT_DB_PATH", args.db_file_path)
+    db_path = os.getenv("LIBRA_DB_PATH", args.db_file_path)
 
     # Initialize auth handler
     auth_handler = APIKeyAuth(db_path)
@@ -833,7 +835,11 @@ def create_app(args):
         use_default_chat_template=args.use_default_chat_template,
         chat_template=args.chat_template,
         eos_token=args.eos_token,
-        trust_remote_code=args.trust_remote_code
+        trust_remote_code=args.trust_remote_code,
+        env_file=args.env_file,
+        db_file_path=args.db_file_path,
+        seqlen=args.seqlen,
+        device_map=args.device_map
     )
 
     # Initialize model provider
@@ -855,7 +861,11 @@ def create_app(args):
         ):
             try:
                 # Estimate total tokens
-                estimated_tokens = len(request.prompt.split()) + request.max_tokens
+                if isinstance(request.prompt, list):
+                    estimated_tokens = sum(len(p.split()) for p in request.prompt) + request.max_tokens * len(
+                        request.prompt)
+                else:
+                    estimated_tokens = len(request.prompt.split()) + request.max_tokens
 
                 # Check permissions
                 auth_handler.check_permissions(user_info, "completion")

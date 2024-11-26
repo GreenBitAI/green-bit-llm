@@ -1,4 +1,3 @@
--- 首先创建数据库表
 -- z.B. sqlite3 greenbit.db < create_tables.sql
 
 -- Create users table
