@@ -129,19 +129,23 @@ class GreenBitPipeline(BaseLLM):
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ) -> LLMResult:
-        pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
+        # Get and merge pipeline kwargs
+        pipeline_kwargs = {**self.pipeline_kwargs}
+        if "pipeline_kwargs" in kwargs:
+            pipeline_kwargs.update(kwargs["pipeline_kwargs"])
 
         # Handle max_tokens parameter
-        if "max_new_tokens" in kwargs:
-            pipeline_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
+        if "max_tokens" in pipeline_kwargs:
+            pipeline_kwargs["max_new_tokens"] = pipeline_kwargs.pop("max_tokens")
         elif "max_tokens" in kwargs:
             pipeline_kwargs["max_new_tokens"] = kwargs["max_tokens"]
 
-        # Other existing kwargs
-        pipeline_kwargs.update({
-            k: v for k, v in kwargs.items()
-            if k not in ["max_new_tokens", "max_tokens", "skip_prompt", "with_hidden_states"]
-        })
+        generation_args = {
+            "temperature": pipeline_kwargs.get("temperature", 0.7),
+            "top_p": pipeline_kwargs.get("top_p", 1.0),
+            "max_new_tokens": pipeline_kwargs.get("max_new_tokens", 100),
+            "do_sample": True
+        }
 
         text_generations = []
         hidden_states_list = []
@@ -160,13 +164,13 @@ class GreenBitPipeline(BaseLLM):
 
             # modifies pipeline kwargs for getting hidden states
             if with_hidden_states:
-                pipeline_kwargs["output_hidden_states"] = True
+                generation_args["output_hidden_states"] = True
 
             # get llm responses
             outputs = self.pipeline.model.generate(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
-                **pipeline_kwargs,
+                **generation_args,
                 return_dict_in_generate=True,
                 output_scores=True,
             )
@@ -178,10 +182,11 @@ class GreenBitPipeline(BaseLLM):
                 input_tokens_hs = outputs.hidden_states[0][hidden_layer]
                 # use attention mask
                 mask = inputs["attention_mask"].unsqueeze(2)
-                input_tokens_hs = input_tokens_hs * mask
+                # input_tokens_hs = input_tokens_hs * mask
                 # calculates mean
                 batch_embeddings = torch.sum(input_tokens_hs, dim=1) / torch.sum(mask, dim=1)
-                hidden_states_list.extend([emb.detach() for emb in batch_embeddings])
+                # keep batch dimension when adding to list
+                hidden_states_list.extend([emb.unsqueeze(0).detach() for emb in batch_embeddings])
 
             generated_texts = self.pipeline.tokenizer.batch_decode(
                 outputs.sequences,
@@ -211,19 +216,26 @@ class GreenBitPipeline(BaseLLM):
             **kwargs: Any,
     ) -> Iterator[GenerationChunk]:
 
-        pipeline_kwargs = {**self.pipeline_kwargs, **kwargs.get("pipeline_kwargs", {})}
+        # Get and merge pipeline kwargs
+        pipeline_kwargs = {**self.pipeline_kwargs}
+        if "pipeline_kwargs" in kwargs:
+            pipeline_kwargs.update(kwargs["pipeline_kwargs"])
 
         # Handle max_tokens parameter
-        if "max_new_tokens" in kwargs:
-            pipeline_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
+        if "max_tokens" in pipeline_kwargs:
+            pipeline_kwargs["max_new_tokens"] = pipeline_kwargs.pop("max_tokens")
         elif "max_tokens" in kwargs:
             pipeline_kwargs["max_new_tokens"] = kwargs["max_tokens"]
 
-        # Other existing kwargs
-        pipeline_kwargs.update({
-            k: v for k, v in kwargs.items()
-            if k not in ["max_new_tokens", "max_tokens", "skip_prompt"]
-        })
+        generation_args = {
+            "temperature": pipeline_kwargs.get("temperature", 0.7),
+            "top_p": pipeline_kwargs.get("top_p", 1.0),
+            "max_new_tokens": pipeline_kwargs.get("max_new_tokens", 100),
+            "do_sample": True
+        }
+
+        if "logit_bias" in pipeline_kwargs:
+            generation_args["logit_bias"] = pipeline_kwargs["logit_bias"]
 
         skip_prompt = kwargs.get("skip_prompt", True)
 
@@ -245,7 +257,7 @@ class GreenBitPipeline(BaseLLM):
             **inputs,
             streamer=streamer,
             stopping_criteria=stopping_criteria,
-            **pipeline_kwargs,
+            **generation_args,
         )
 
         thread = Thread(target=self.pipeline.model.generate, kwargs=generation_kwargs)
