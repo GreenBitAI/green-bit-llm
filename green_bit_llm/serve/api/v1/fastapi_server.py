@@ -459,7 +459,19 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
         # Convert string prompt to HumanMessage
         messages = [HumanMessage(content=request.prompt)]
 
+        # Get tokenizer for counting tokens
+        tokenizer = chat_model.llm.pipeline.tokenizer
+
+        # Count input tokens
+        input_tokens = len(tokenizer.encode(request.prompt))
+        output_tokens = 0
+        is_first_chunk = True
+
         for chunk in chat_model.stream(messages, **wrapped_kwargs):
+            # Count tokens in this chunk
+            chunk_tokens = len(tokenizer.encode(chunk.message.content))
+            output_tokens += chunk_tokens
+
             response = {
                 "id": request_id,
                 "object": "text_completion",
@@ -474,8 +486,39 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
                     }
                 ]
             }
+
+            # Add usage info in first chunk
+            if is_first_chunk:
+                response["usage"] = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens
+                }
+                is_first_chunk = False
+
             yield f"data: {json.dumps(response)}\n\n"
 
+        # Final chunk with complete usage stats
+        response = {
+            "id": request_id,
+            "object": "text_completion",
+            "created": created,
+            "model": request.model,
+            "choices": [
+                {
+                    "text": "",
+                    "index": 0,
+                    "logprobs": None,
+                    "finish_reason": "max_tokens" if len(output_tokens) == request.max_tokens else "stop",
+                }
+            ],
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens
+            }
+        }
+        yield f"data: {json.dumps(response)}\n\n"
         yield "data: [DONE]\n\n"
     except Exception as e:
         logger.error(f"Streaming completion failed: {str(e)}")
@@ -497,7 +540,24 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
             "pipeline_kwargs": generation_kwargs
         }
 
+        # Get tokenizer for counting tokens
+        tokenizer = chat_model.llm.pipeline.tokenizer
+
+        # Convert messages to prompt and count input tokens
+        prompt = await asyncio.get_event_loop().run_in_executor(
+            thread_pool,
+            chat_model._to_chat_prompt,
+            messages_list[0]
+        )
+        input_tokens = len(tokenizer.encode(prompt))
+        output_tokens = 0
+        is_first_chunk = True
+
         for chunk in chat_model.stream(messages_list[0], **wrapped_kwargs):
+            # Count tokens in this chunk
+            chunk_tokens = len(tokenizer.encode(chunk.message.content))
+            output_tokens += chunk_tokens
+
             response = {
                 "id": request_id,
                 "object": "chat.completion.chunk",
@@ -514,8 +574,40 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
                     }
                 ]
             }
+            # Add usage info in first chunk
+            if is_first_chunk:
+                response["usage"] = {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens
+                }
+                is_first_chunk = False
+
             yield f"data: {json.dumps(response)}\n\n"
 
+        # Final chunk with complete usage stats
+        response = {
+            "id": request_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": request.model,
+            "choices": [
+                {
+                    "delta": {
+                        "role": "assistant",
+                        "content": ""
+                    },
+                    "index": 0,
+                    "finish_reason": "max_tokens" if len(output_tokens) == request.max_tokens else "stop",
+                }
+            ],
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens
+            }
+        }
+        yield f"data: {json.dumps(response)}\n\n"
         yield "data: [DONE]\n\n"
     except Exception as e:
         logger.error(f"Streaming chat completion failed: {str(e)}")
@@ -608,8 +700,8 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
                     for c in choices
                 ])
                 return {
-                    "prompt_tokens": sum(prompt_tokens),
-                    "completion_tokens": sum(completion_tokens),
+                    "input_tokens": sum(prompt_tokens),
+                    "output_tokens": sum(completion_tokens),
                     "total_tokens": sum(prompt_tokens) + sum(completion_tokens)
                 }
             except Exception as e:
@@ -617,8 +709,8 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
                 prompt_tokens = sum(len(p.split()) for p in prompts)
                 completion_tokens = sum(len(c["text"].split()) for c in choices)
                 return {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
+                    "input_tokens": prompt_tokens,
+                    "output_tokens": completion_tokens,
                     "total_tokens": prompt_tokens + completion_tokens
                 }
 
@@ -760,8 +852,8 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
                     for c in choices
                 ])
                 return {
-                    "prompt_tokens": sum(prompt_tokens),
-                    "completion_tokens": sum(completion_tokens),
+                    "input_tokens": sum(prompt_tokens),
+                    "output_tokens": sum(completion_tokens),
                     "total_tokens": sum(prompt_tokens) + sum(completion_tokens)
                 }
             except Exception as e:
@@ -770,8 +862,8 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
                 prompt_tokens = sum(sum(len(msg.content.split()) for msg in msgs) for msgs in messages_list)
                 completion_tokens = sum(len(c["message"]["content"].split()) for c in choices)
                 return {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
+                    "input_tokens": prompt_tokens,
+                    "output_tokens": completion_tokens,
                     "total_tokens": prompt_tokens + completion_tokens
                 }
 
