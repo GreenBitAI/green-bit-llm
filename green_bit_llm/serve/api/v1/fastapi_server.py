@@ -192,7 +192,7 @@ def parse_args():
 
     # Additional configurations
     parser.add_argument("--device", type=str, default="cuda:0", help="Device to run the model on")
-    parser.add_argument("--max_new_tokens", type=int, default=100, help="Maximum number of new tokens to generate")
+    parser.add_argument("--max_new_tokens", type=int, default=2048, help="Maximum number of new tokens to generate")
     parser.add_argument("--temperature", type=float, default=0.7, help="Sampling temperature")
     parser.add_argument("--use_default_chat_template", action="store_true",
                         help="Use the default chat template from the model's tokenizer")
@@ -204,7 +204,7 @@ def parse_args():
                         help="Path to the uncertainty estimation parameters database")
     parser.add_argument("--trust_remote_code", action="store_true",
                         help="Allow loading remote code in tokenizer")
-    parser.add_argument("--seqlen", type=int, default=2048, help="Maximum sequence length")
+    parser.add_argument("--seqlen", type=int, default=4096, help="Maximum sequence length")
     parser.add_argument("--device_map", type=str, default="auto", help="Device mapping strategy")
     parser.add_argument("--env_file", type=str, default=".env", help="Path to .env file")
 
@@ -251,7 +251,7 @@ class ModelProvider:
             # Initialize tokenizer with custom configuration
             tokenizer = AutoTokenizer.from_pretrained(
                 model_path,
-                trust_remote_code=self.cli_args.trust_remote_code,
+                trust_remote_code=True,
                 eos_token="<|im_end|>" if model_path.lower().__contains__("qwen") else "<|eot_id|>",
             )
 
@@ -262,6 +262,13 @@ class ModelProvider:
                 if not tokenizer.chat_template:
                     tokenizer.chat_template = tokenizer.default_chat_template
 
+            model_config = {
+                "trust_remote_code": True,
+                "attn_implementation": "flash_attention_2"
+            }
+
+            tokenizer_config = {"trust_remote_code": True}
+
             # Initialize pipeline
             pipeline = GreenBitPipeline.from_model_id(
                 model_id=model_path,
@@ -271,12 +278,15 @@ class ModelProvider:
                     "dtype": torch.half,
                     "device_map": self.cli_args.device_map,
                     "seqlen": self.cli_args.seqlen,
-                    "requires_grad": False
+                    "requires_grad": False,
+                    "model_config": model_config,
+                    "tokenizer_config": tokenizer_config
                 },
                 pipeline_kwargs={
                     "max_new_tokens": self.cli_args.max_new_tokens,
                     "temperature": self.cli_args.temperature,
-                    "eos_token_id": tokenizer.eos_token_id
+                    "eos_token_id": tokenizer.eos_token_id,
+                    "do_sample": True
                 },
             )
 
@@ -519,7 +529,7 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
     try:
         generation_kwargs = {
             "temperature": request.temperature,
-            "max_tokens": request.max_tokens
+            "max_new_tokens": request.max_tokens
         }
 
         # Wrap generation parameters
@@ -641,7 +651,7 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
         generation_kwargs = {
             "temperature": request.temperature,
             "top_p": request.top_p,
-            "max_tokens": request.max_tokens
+            "max_new_tokens": request.max_tokens
         }
 
         # Wrap generation parameters
@@ -650,17 +660,35 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
             "with_hidden_states": request.with_hidden_states
         }
 
-        # thread pool
-        prompts = await asyncio.gather(*[
-            asyncio.get_event_loop().run_in_executor(
-                thread_pool,
-                chat_model._to_chat_prompt,
-                msgs
-            )
-            for msgs in messages_list
-        ])
+        conv = chat_model.conv_template
+        if not conv:
+            raise ValueError("Conversation template is required but not set")
 
-        # thread pool
+        prompts = []
+        for messages in messages_list:
+            conv_instance = conv.copy()
+
+            # Handle system message if present
+            system_messages = [m for m in messages if isinstance(m, SystemMessage)]
+            if system_messages:
+                conv_instance.system_message = system_messages[0].content
+
+            # Process messages
+            for message in messages:
+                if isinstance(message, SystemMessage):
+                    continue
+                elif isinstance(message, HumanMessage):
+                    conv_instance.append_message(conv_instance.roles[0], message.content)
+                elif isinstance(message, AIMessage):
+                    conv_instance.append_message(conv_instance.roles[1], message.content)
+
+            # Ensure assistant's turn
+            if len(conv_instance.messages) == 0 or conv_instance.messages[-1][0] != conv_instance.roles[1]:
+                conv_instance.append_message(conv_instance.roles[1], None)
+
+            prompts.append(conv_instance.get_prompt())
+
+        # Generate using thread pool
         llm_result = await asyncio.get_event_loop().run_in_executor(
             thread_pool,
             lambda: chat_model.llm._generate(
