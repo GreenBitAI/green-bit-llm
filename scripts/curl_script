@@ -1,138 +1,132 @@
 #!/bin/bash
 
 # Set variables for testing
-API_KEY="sk-gb-v1-fQDvJjMd1_RkZbAzlEzOQ2SdYxXPplQb_vo-X4XGRKEAAAAAZ0OQSw-oTYXGGlWISHdDAAsSCd2ANOQqExdPO7KIA7-KbbOk6w"  # Replace with your actual API key
+API_KEY=""  # Replace with your actual API key
 HOST="172.20.8.79:8000"
-MODEL_NAME="GreenBitAI-Llama-3-8B-instruct-layer-mix-bpw-40"  # Replace with your actual model name
 
-# 1. Health Check
-echo "Testing Health Check Endpoint..."
-curl -X GET "http://${HOST}/health"
+# Array of models to test
+MODELS=(
+    "GreenBitAI-Llama-3-8B-instruct-layer-mix-bpw-40"
+    "GreenBitAI-Qwen-25-7B-Instruct-layer-mix-bpw-40"
+)
 
-# 2. Root Endpoint (Get Available Models and Endpoints)
-echo -e "\n\nTesting Root Endpoint..."
-curl -X GET "http://${HOST}/"
+# Function to run tests for a specific model
+run_tests() {
+    local MODEL_NAME=$1
+    echo "Running tests for model: ${MODEL_NAME}"
+    echo "=================================="
 
-# 3. Text Completion Endpoints
+    # 1. Health Check
+    echo "Testing Health Check Endpoint..."
+    curl -X GET "http://${HOST}/health"
 
-## 3.1 Basic completion request with API key in header
-#echo -e "\n\nTesting Basic Completion..."
-#curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
-#    -H "Content-Type: application/json" \
-#    -H "X-Api-Key: ${API_KEY}" \
-#    -d '{
-#        "model": "'${MODEL_NAME}'",
-#        "prompt": "Write a story about a robot",
-#        "max_tokens": 100,
-#        "temperature": 0.7
-#    }'
-#
-### 3.2 Streaming completion request
-#echo -e "\n\nTesting Streaming Completion..."
-#curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
-#    -H "Content-Type: application/json" \
-#    -H "X-Api-Key: ${API_KEY}" \
-#    -d '{
-#        "model": "'${MODEL_NAME}'",
-#        "prompt": "Write a story about a robot",
-#        "max_tokens": 200,
-#        "temperature": 0.7,
-#        "stream": true
-#    }'
+    # 2. Root Endpoint
+    echo -e "\n\nTesting Root Endpoint..."
+    curl -X GET "http://${HOST}/"
 
-## 3.3 Batch completion request
-#echo -e "\n\nTesting Batch Completion..."
-#curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
-#    -H "Content-Type: application/json" \
-#    -H "X-Api-Key: ${API_KEY}" \
-#    -d '{
-#        "model": "'${MODEL_NAME}'",
-#        "prompt": ["Tell me a joke", "Write a poem"],
-#        "max_tokens": 100,
-#        "temperature": 0.7
-#    }'
+    # 3. Text Completion Endpoints
+    echo -e "\n\nTesting Basic Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "prompt": "Write a story about a robot",
+            "max_tokens": 100,
+            "temperature": 0.7
+        }'
 
-## 4. Chat Completion Endpoints
-#
-### 4.1 Basic chat completion
-#echo -e "\n\nTesting Basic Chat Completion..."
-#curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
-#    -H "Content-Type: application/json" \
-#    -H "X-Api-Key: ${API_KEY}" \
-#    -d '{
-#        "model": "'${MODEL_NAME}'",
-#        "messages": [
-#            {"role": "system", "content": "You are a helpful assistant."},
-#            {"role": "user", "content": "What is the capital of France?"}
-#        ],
-#        "max_tokens": 100,
-#        "temperature": 0.7
-#    }'
-#
-### 4.2 Streaming chat completion
-#echo -e "\n\nTesting Streaming Chat Completion..."
-#curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
-#    -H "Content-Type: application/json" \
-#    -H "X-Api-Key: ${API_KEY}" \
-#    -d '{
-#        "model": "'${MODEL_NAME}'",
-#        "messages": [
-#            {"role": "user", "content": "Write a story about a cat"}
-#        ],
-#        "max_tokens": 100,
-#        "temperature": 0.7,
-#        "stream": true
-#    }'
+    echo -e "\n\nTesting Streaming Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "prompt": "Write a story about a robot",
+            "max_tokens": 200,
+            "temperature": 0.7,
+            "stream": true
+        }'
 
-### 4.3 Batch chat completion
-#echo -e "\n\nTesting Batch Chat Completion..."
-#curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
-#    -H "Content-Type: application/json" \
-#    -H "X-Api-Key: ${API_KEY}" \
-#    -d '{
-#        "model": "'${MODEL_NAME}'",
-#        "messages": [
-#            [{"role": "user", "content": "Tell me a joke"}],
-#            [{"role": "user", "content": "Write a poem"}]
-#        ],
-#        "max_tokens": 100,
-#        "temperature": 0.7
-#    }'
+    echo -e "\n\nTesting Batch Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "prompt": ["Tell me a joke", "Write a poem"],
+            "max_tokens": 100,
+            "temperature": 0.7
+        }'
 
-# 5. Calculates remote confidence scores for a chat model
+    # 4. Chat Completion Endpoints
+    echo -e "\n\nTesting Basic Chat Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "What is the capital of France?"}
+            ],
+            "max_tokens": 100,
+            "temperature": 0.7
+        }'
 
-## 5.1 Chat completion with system message and conversation history
-echo -e "\n\nTesting Chat Completion with History..."
-curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
-    -H "Content-Type: application/json" \
-    -H "X-Api-Key: ${API_KEY}" \
-    -d '{
-        "model": "'${MODEL_NAME}'",
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Find the area of the given trapezoid.\nBases: 13 cm and 16 cm; Height: 12 cm"}
-        ],
-        "max_tokens": 1,
-        "temperature": 0.7,
-        "top_p": 1.0,
-        "with_hidden_states": true,
-        "remote_score": true
-    }'
+    echo -e "\n\nTesting Streaming Chat Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "user", "content": "Write a story about a cat"}
+            ],
+            "max_tokens": 100,
+            "temperature": 0.7,
+            "stream": true
+        }'
 
-### 5.2 Chat completion with system message and conversation history
-#echo -e "\n\nTesting Chat Completion with History..."
-#curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
-#    -H "Content-Type: application/json" \
-#    -H "X-Api-Key: ${API_KEY}" \
-#    -d '{
-#        "model": "'${MODEL_NAME}'",
-#        "messages": [
-#            {"role": "system", "content": "You are a friendly and knowledgeable AI assistant."},
-#            {"role": "user", "content": "Tell me about Paris"},
-#            {"role": "assistant", "content": "Paris is the capital of France."},
-#            {"role": "user", "content": "What are some famous landmarks there?"}
-#        ],
-#        "max_tokens": 150,
-#        "temperature": 0.7,
-#        "top_p": 0.9
-#    }'
+    echo -e "\n\nTesting Remote Confidence Scores..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "hi"}
+            ],
+            "max_tokens": 1,
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "with_hidden_states": true,
+            "remote_score": true
+        }'
+
+    echo -e "\n\nTesting Chat Completion with History..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "system", "content": "You are a friendly and knowledgeable AI assistant."},
+                {"role": "user", "content": "Tell me about Paris"},
+                {"role": "assistant", "content": "Paris is the capital of France."},
+                {"role": "user", "content": "What are some famous landmarks there?"}
+            ],
+            "max_tokens": 150,
+            "temperature": 0.7,
+            "top_p": 0.9
+        }'
+
+    echo -e "\n\nCompleted tests for ${MODEL_NAME}"
+    echo "==================================\n\n"
+}
+
+# Run tests for each model
+for MODEL in "${MODELS[@]}"; do
+    run_tests "$MODEL"
+done
