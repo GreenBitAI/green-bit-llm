@@ -509,7 +509,7 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
                     "text": "",
                     "index": 0,
                     "logprobs": None,
-                    "finish_reason": "max_tokens" if len(output_tokens) == request.max_tokens else "stop",
+                    "finish_reason": "max_tokens" if output_tokens == request.max_tokens else "stop",
                 }
             ],
             "usage": {
@@ -543,13 +543,6 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
         # Get tokenizer for counting tokens
         tokenizer = chat_model.llm.pipeline.tokenizer
 
-        # Convert messages to prompt and count input tokens
-        prompt = await asyncio.get_event_loop().run_in_executor(
-            thread_pool,
-            chat_model._to_chat_prompt,
-            messages_list[0]
-        )
-        input_tokens = len(tokenizer.encode(prompt))
         output_tokens = 0
         is_first_chunk = True
 
@@ -576,6 +569,9 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
             }
             # Add usage info in first chunk
             if is_first_chunk:
+                input_text = chat_model.conv_template.copy().get_prompt()
+                input_tokens = len(tokenizer.encode(input_text))
+
                 response["usage"] = {
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
@@ -598,7 +594,7 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
                         "content": ""
                     },
                     "index": 0,
-                    "finish_reason": "max_tokens" if len(output_tokens) == request.max_tokens else "stop",
+                    "finish_reason": "max_tokens" if output_tokens == request.max_tokens else "stop",
                 }
             ],
             "usage": {
