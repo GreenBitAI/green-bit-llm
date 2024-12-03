@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional, Union, Sequence, Literal, Callable, Type
-
+from pydantic import Field
 from langchain_core.callbacks.manager import (
     AsyncCallbackManagerForLLMRun,
     CallbackManagerForLLMRun,
@@ -19,6 +19,7 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from green_bit_llm.langchain import GreenBitPipeline
+from green_bit_llm.inference.conversation import get_conv_template, Conversation, SeparatorStyle
 
 DEFAULT_SYSTEM_PROMPT = """You are a helpful, respectful, and honest assistant."""
 
@@ -29,23 +30,69 @@ class ChatGreenBit(BaseChatModel):
     Example:
         .. code-block:: python
 
-            from green_bit_llm.langchain import GreenBitPipeline, ChatGreenBit
+            from green_bit_llm.langchain import GreenBitPipeline
 
-            pipeline = GreenBitPipeline.from_model_id(
+            model_config = {
+                "trust_remote_code": True,
+                "attn_implementation": "flash_attention_2"
+            }
+
+            tokenizer_config = {"trust_remote_code": True}
+
+            gb = GreenBitPipeline.from_model_id(
                 model_id="GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0",
-                model_kwargs={"dtype": torch.half, "seqlen": 2048, "requires_grad": False},
-                pipeline_kwargs={"max_new_tokens": 100, "temperature": 0.7},
+                task="text-generation",
+                pipeline_kwargs={"max_tokens": 100, "temp": 0.7},
+                model_kwargs={
+                    "dtype": torch.half,
+                    "seqlen": 2048,
+                    "requires_grad": False,
+                    "model_config": model_config,
+                    "tokenizer_config": tokenizer_config
+                }
             )
-
-            chat = ChatGreenBit(llm=pipeline)
     """
 
-    llm: GreenBitPipeline
-    system_message: SystemMessage = SystemMessage(content=DEFAULT_SYSTEM_PROMPT)
+    llm: GreenBitPipeline = Field(..., description="GreenBit Pipeline instance")
+    conv_template: Optional[Conversation] = Field(default=None, description="Conversation template")
+
+    class Config:
+        """Configuration for this pydantic object."""
+        arbitrary_types_allowed = True
+
+    def __init__(
+            self,
+            llm: GreenBitPipeline,
+            **kwargs: Any,
+    ) -> None:
+        """Initialize the chat model.
+
+        Args:
+            llm: GreenBit Pipeline instance
+            **kwargs: Additional keyword arguments
+        """
+        # First initialize with mandatory llm field
+        super().__init__(llm=llm, **kwargs)
+
+        # Then set the conversation template
+        self.conv_template = llm.conv_template
 
     @property
     def _llm_type(self) -> str:
         return "greenbit-chat"
+
+    def _create_chat_result(self, llm_result: LLMResult) -> ChatResult:
+        """Convert LLM result to chat messages"""
+        generations = []
+        for gen in llm_result.generations:
+            for g in gen:
+                message = AIMessage(content=g.text.strip())
+                chat_generation = ChatGeneration(
+                    message=message,
+                    generation_info=g.generation_info
+                )
+                generations.append(chat_generation)
+        return ChatResult(generations=generations)
 
     def _generate(
             self,
@@ -54,106 +101,55 @@ class ChatGreenBit(BaseChatModel):
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ) -> ChatResult:
-        llm_input = self._to_chat_prompt(messages)
+        """Generate chat completion using the underlying pipeline"""
+        if not self.conv_template:
+            raise ValueError("Conversation template is required but not set")
 
-        # maintain all generation related args
-        generation_kwargs = {
-            "temperature": kwargs.get("temperature", 0.7),
-        }
+        conv = self.conv_template.copy()
 
-        # Handle max_tokens parameter
-        if "max_tokens" in kwargs:
-            generation_kwargs["max_new_tokens"] = kwargs["max_tokens"]
-        elif "max_new_tokens" in kwargs:
+        # Handle system message
+        system_messages = [m for m in messages if isinstance(m, SystemMessage)]
+        if system_messages:
+            conv.system_message = system_messages[0].content
+
+        # Process messages
+        for message in messages:
+            if isinstance(message, SystemMessage):
+                continue
+            if isinstance(message, HumanMessage):
+                conv.append_message(conv.roles[0], message.content)
+            elif isinstance(message, AIMessage):
+                conv.append_message(conv.roles[1], message.content)
+
+        # Ensure assistant's turn
+        if len(conv.messages) == 0 or conv.messages[-1][0] != conv.roles[1]:
+            conv.append_message(conv.roles[1], None)
+
+        # Prepare prompt
+        prompt = conv.get_prompt()
+
+        # Handle generation parameters
+        generation_kwargs = {}
+        if "temperature" in kwargs:
+            generation_kwargs["temperature"] = kwargs["temperature"]
+        if "max_new_tokens" in kwargs:
             generation_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
+        elif "max_tokens" in kwargs:
+            generation_kwargs["max_new_tokens"] = kwargs["max_tokens"]
 
-        # Wrap generation parameters in pipeline_kwargs
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs,
-            "with_hidden_states": kwargs.get("with_hidden_states", False),  # Keep this outside for pipeline's own use
+            "stop": stop or conv.stop_str,
         }
 
+        # Generate using pipeline
         llm_result = self.llm._generate(
-            prompts=[llm_input],
-            stop=stop,
+            prompts=[prompt],
             run_manager=run_manager,
             **wrapped_kwargs
         )
-        return self._to_chat_result(llm_result)
 
-    def _to_chat_prompt(
-            self,
-            messages: List[BaseMessage],
-    ) -> str:
-        """Convert a list of messages into a prompt format expected by wrapped LLM."""
-        if not messages:
-            raise ValueError("At least one HumanMessage must be provided!")
-
-        if not isinstance(messages[-1], HumanMessage):
-            raise ValueError("Last message must be a HumanMessage!")
-
-        messages_dicts = [self._to_chatml_format(m) for m in messages]
-
-        if not hasattr(self.llm, 'pipeline') or not hasattr(self.llm.pipeline, 'tokenizer'):
-            raise ValueError("LLM pipeline or tokenizer is not properly initialized")
-
-        return self.llm.pipeline.tokenizer.apply_chat_template(
-            messages_dicts, tokenize=False, add_generation_prompt=True
-        )
-
-    def _to_chatml_format(self, message: BaseMessage) -> dict:
-        """Convert LangChain message to ChatML format."""
-        if isinstance(message, SystemMessage):
-            role = "system"
-        elif isinstance(message, AIMessage):
-            role = "assistant"
-        elif isinstance(message, HumanMessage):
-            role = "user"
-        else:
-            raise ValueError(f"Unknown message type: {type(message)}")
-
-        return {"role": role, "content": message.content}
-
-    @staticmethod
-    def _to_chat_result(llm_result: LLMResult) -> ChatResult:
-        """Convert LLM result to chat result, preserving hidden states on their original device."""
-        chat_generations = []
-
-        for gen_list in llm_result.generations:
-            for g in gen_list:
-                generation_info = g.generation_info or {}
-
-                hidden_states = generation_info.get("hidden_states")
-                additional_kwargs = {}
-
-                if hidden_states is not None:
-                    additional_kwargs["hidden_states"] = hidden_states
-
-                message = AIMessage(
-                    content=g.text,
-                    additional_kwargs=additional_kwargs
-                )
-
-                chat_generation = ChatGeneration(
-                    message=message,
-                    generation_info=generation_info
-                )
-                chat_generations.append(chat_generation)
-
-        return ChatResult(
-            generations=chat_generations,
-            llm_output=llm_result.llm_output
-        )
-
-    async def agenerate(
-            self,
-            messages: List[BaseMessage],
-            stop: Optional[List[str]] = None,
-            run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
-            **kwargs: Any,
-    ) -> ChatResult:
-        """async generation function"""
-        raise NotImplementedError("Async generation not implemented yet")
+        return self._create_chat_result(llm_result)
 
     def stream(
             self,
@@ -162,33 +158,60 @@ class ChatGreenBit(BaseChatModel):
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ):
-        """streaming output not support hidden states"""
-        prompt = self._to_chat_prompt(messages)
+        """Stream chat completion"""
+        if not self.conv_template:
+            raise ValueError("Conversation template is required but not set")
+
+        conv = self.conv_template.copy()
+
+        # Process messages
+        for message in messages:
+            if isinstance(message, SystemMessage):
+                conv.system_message = message.content
+            elif isinstance(message, HumanMessage):
+                conv.append_message(conv.roles[0], message.content)
+            elif isinstance(message, AIMessage):
+                conv.append_message(conv.roles[1], message.content)
+
+        # Ensure assistant's turn
+        if len(conv.messages) == 0 or conv.messages[-1][0] != conv.roles[1]:
+            conv.append_message(conv.roles[1], None)
+
+        # Prepare prompt
+        prompt = conv.get_prompt()
 
         # Handle generation parameters
-        generation_kwargs = {
-            "temperature": kwargs.get("temperature", 0.7)
-        }
-
-        # Handle max_tokens parameter
-        if "max_tokens" in kwargs:
-            generation_kwargs["max_new_tokens"] = kwargs["max_tokens"]
-        elif "max_new_tokens" in kwargs:
+        generation_kwargs = {}
+        if "temperature" in kwargs:
+            generation_kwargs["temperature"] = kwargs["temperature"]
+        if "max_new_tokens" in kwargs:
             generation_kwargs["max_new_tokens"] = kwargs["max_new_tokens"]
+        elif "max_tokens" in kwargs:
+            generation_kwargs["max_new_tokens"] = kwargs["max_tokens"]
 
-        # Wrap parameters correctly
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs,
+            "stop": stop or conv.stop_str,
             "skip_prompt": kwargs.get("skip_prompt", True)
         }
 
+        # Stream using pipeline
         for chunk in self.llm._stream(
                 prompt,
-                stop=stop,
                 run_manager=run_manager,
                 **wrapped_kwargs
         ):
             yield ChatGeneration(message=AIMessage(content=chunk.text))
+
+    async def agenerate(
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+    ) -> ChatResult:
+        """Async generation (not implemented)"""
+        raise NotImplementedError("Async generation not implemented yet")
 
     async def astream(
             self,
@@ -197,7 +220,7 @@ class ChatGreenBit(BaseChatModel):
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ):
-        """async streaming output"""
+        """Async streaming (not implemented)"""
         raise NotImplementedError("Async stream generation not implemented yet")
 
     def bind_tools(
@@ -207,14 +230,16 @@ class ChatGreenBit(BaseChatModel):
             tool_choice: Optional[Union[dict, str, Literal["auto", "none"], bool]] = None,
             **kwargs: Any,
     ) -> Runnable[LanguageModelInput, BaseMessage]:
-        """Bind tool-like objects to this chat model."""
+        """Bind tools to the chat model"""
         formatted_tools = [convert_to_openai_tool(tool) for tool in tools]
+
         if tool_choice is not None and tool_choice:
             if len(formatted_tools) != 1:
                 raise ValueError(
                     "When specifying `tool_choice`, you must provide exactly one "
                     f"tool. Received {len(formatted_tools)} tools."
                 )
+
             if isinstance(tool_choice, str):
                 if tool_choice not in ("auto", "none"):
                     tool_choice = {
@@ -237,5 +262,7 @@ class ChatGreenBit(BaseChatModel):
                     f"Unrecognized tool_choice type. Expected str, bool or dict. "
                     f"Received: {tool_choice}"
                 )
+
             kwargs["tool_choice"] = tool_choice
+
         return super().bind(tools=formatted_tools, **kwargs)
