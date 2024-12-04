@@ -9,6 +9,8 @@ It enables **high-performance inference** on both cloud-based and consumer-level
 Additionally, you can use our provided **evaluation tools** to validate the model's performance on mainstream benchmark datasets.
 
 ## News
+- [2024/10]
+  - Langchain integration, various refactoring and improvements.
 - [2024/04]
   - We have launched over **200 low-bit LLMs** in [GreenBitAI's Hugging Face Model Zoo](https://huggingface.co/GreenBitAI). Our release includes highly precise 2.2/2.5/3-bit models across the LLM family, featuring LLaMA 2/3, 01-Yi, Qwen, Mistral, Phi-3, Gemma, and more.
   - We released [Bitorch Engine](https://github.com/GreenBitAI/bitorch-engine) for **low-bit** quantized neural network operations. Our release support full parameter fine-tuning and parameter efficiency fine-tuning (PEFT), even under extremely constrained GPU resource conditions.

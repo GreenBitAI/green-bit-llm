@@ -145,3 +145,11 @@ cython_debug/
 # downloaded dataset files
 train/
 test/
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# databasegit status
+db/*
+!db/.gitkeep
