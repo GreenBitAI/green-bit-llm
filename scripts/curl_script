@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# Set variables for testing
+API_KEY=""  # Replace with your actual API key
+HOST="172.20.8.79:8000"
+
+# Array of models to test
+MODELS=(
+    "GreenBitAI-Llama-3-8B-instruct-layer-mix-bpw-40"
+    "GreenBitAI-Qwen-25-7B-Instruct-layer-mix-bpw-40"
+)
+
+# Function to run tests for a specific model
+run_tests() {
+    local MODEL_NAME=$1
+    echo "Running tests for model: ${MODEL_NAME}"
+    echo "=================================="
+
+    # 1. Health Check
+    echo "Testing Health Check Endpoint..."
+    curl -X GET "http://${HOST}/health"
+
+    # 2. Root Endpoint
+    echo -e "\n\nTesting Root Endpoint..."
+    curl -X GET "http://${HOST}/"
+
+    # 3. Text Completion Endpoints
+    echo -e "\n\nTesting Basic Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "prompt": "Write a story about a robot",
+            "max_tokens": 100,
+            "temperature": 0.7
+        }'
+
+    echo -e "\n\nTesting Streaming Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "prompt": "Write a story about a robot",
+            "max_tokens": 200,
+            "temperature": 0.7,
+            "stream": true
+        }'
+
+    echo -e "\n\nTesting Batch Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "prompt": ["Tell me a joke", "Write a poem"],
+            "max_tokens": 100,
+            "temperature": 0.7
+        }'
+
+    # 4. Chat Completion Endpoints
+    echo -e "\n\nTesting Basic Chat Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "What is the capital of France?"}
+            ],
+            "max_tokens": 100,
+            "temperature": 0.7
+        }'
+
+    echo -e "\n\nTesting Streaming Chat Completion..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "user", "content": "Write a story about a cat"}
+            ],
+            "max_tokens": 100,
+            "temperature": 0.7,
+            "stream": true
+        }'
+
+    echo -e "\n\nTesting Remote Confidence Scores..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "hi"}
+            ],
+            "max_tokens": 1,
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "with_hidden_states": true,
+            "remote_score": true
+        }'
+
+    echo -e "\n\nTesting Chat Completion with History..."
+    curl -X POST "http://${HOST}/v1/${MODEL_NAME}/chat/completions" \
+        -H "Content-Type: application/json" \
+        -H "X-Api-Key: ${API_KEY}" \
+        -d '{
+            "model": "'${MODEL_NAME}'",
+            "messages": [
+                {"role": "system", "content": "You are a friendly and knowledgeable AI assistant."},
+                {"role": "user", "content": "Tell me about Paris"},
+                {"role": "assistant", "content": "Paris is the capital of France."},
+                {"role": "user", "content": "What are some famous landmarks there?"}
+            ],
+            "max_tokens": 150,
+            "temperature": 0.7,
+            "top_p": 0.9
+        }'
+
+    echo -e "\n\nCompleted tests for ${MODEL_NAME}"
+    echo "==================================\n\n"
+}
+
+# Run tests for each model
+for MODEL in "${MODELS[@]}"; do
+    run_tests "$MODEL"
+done

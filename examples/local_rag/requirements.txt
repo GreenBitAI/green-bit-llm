@@ -1,0 +1,8 @@
+langchain-core
+langchain-community
+langchain-chroma
+langchain-text-splitters
+langchain-experimental
+beautifulsoup4
+pydantic
+sentence-transformers

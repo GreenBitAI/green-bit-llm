@@ -13,3 +13,7 @@ prompt-toolkit
 rich
 optimum
 auto-gptq
+langchain-core
+fastapi
+uvicorn
+peewee
