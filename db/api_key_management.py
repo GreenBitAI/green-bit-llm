@@ -77,26 +77,26 @@ TIER_LIMITS = {
     'free': {
         'rpm_limit': 10,        # Requests per minute
         'tpm_limit': 10000,     # Tokens per minute
-        'concurrent_requests': 1,# Concurrent requests allowed
+        'concurrent_requests': 100,# Concurrent requests allowed
         'max_tokens': 4096      # Maximum tokens per request
     },
     'basic': {
         'rpm_limit': 60,        # Requests per minute
         'tpm_limit': 40000,     # Tokens per minute
-        'concurrent_requests': 5,# Concurrent requests allowed
+        'concurrent_requests': 500,# Concurrent requests allowed
         'max_tokens': 8192      # Maximum tokens per request
     },
     'standard': {
         'rpm_limit': 250,       # Requests per minute
         'tpm_limit': 100000,    # Tokens per minute
-        'concurrent_requests': 15,# Concurrent requests allowed
+        'concurrent_requests': 1500,# Concurrent requests allowed
         'max_tokens': 16384     # Maximum tokens per request
     },
     'premium': {
-        'rpm_limit': 1000,      # Requests per minute
-        'tpm_limit': 400000,    # Tokens per minute
-        'concurrent_requests': 50,# Concurrent requests allowed
-        'max_tokens': 32768     # Maximum tokens per request
+        'rpm_limit': 100000,      # Requests per minute
+        'tpm_limit': 40000000,    # Tokens per minute
+        'concurrent_requests': 500000,# Concurrent requests allowed
+        'max_tokens': 32768000     # Maximum tokens per request
     }
 }
 

@@ -206,6 +206,15 @@ def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits
             make_quant(layer, layers_to_quantize, layer_mode=layer_mode, group_size=group_size, bits=bits, dtype=dtype,
                        quant_strategy=strategy_per_block, model_type=config.model_type, requires_grad=requires_grad)
 
+    # If we need to bind weights, delete the meta tensor of lm_head
+    if config.tie_word_embeddings:
+        print(Style.BRIGHT + Fore.CYAN + "Info: Using tied word embeddings, removing lm_head meta tensor")
+        if hasattr(model, 'lm_head'):
+            if hasattr(model.lm_head, 'weight'):
+                delattr(model.lm_head, 'weight')
+
+        model.tie_weights()
+
     # Load checkpoint, dispatch model, and apply post-initialization configurations
     model = accelerate.load_checkpoint_and_dispatch(model=model, checkpoint=model_path, device_map=device_map,
                                                     no_split_module_classes=["LlamaDecoderLayer"])
