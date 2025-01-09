@@ -26,34 +26,12 @@ class LLMInference:
         ValueError: If model name ends with '-mlx' or if backend initialization fails
     """
     
-    # Define model name patterns for GBLLM backend
-    GBLLM_PATTERNS = {
-        r'channel-mix': LayerMode.CHANNEL_MIX,
-        r'layer-mix': LayerMode.LAYER_MIX,
-        r'B-(\d+)bit-groupsize(\d+)': LayerMode.LEGENCY,
-        r'w(\d+)a\d+g(\d+)': LayerMode.LEGENCY,
-    }
-    
-    def __init__(self, model_name: str, **kwargs: Any) -> None:
-        if model_name.endswith('-mlx'):
-            raise ValueError("Models with '-mlx' suffix are not supported")
+    def __init__(self, model_name: str, backend_type: Optional[BackendType] = BackendType.GBLLM, **kwargs: Any) -> None:
+        if backend_type not in [BackendType.GBLLM, BackendType.VLLM]:
+            raise ValueError(f"Unsupported backend type: {backend_type}")
             
-        self.backend_type = self._determine_backend_type(model_name)
+        self.backend_type = backend_type
         self.model = self._initialize_backend(model_name, **kwargs)
-    
-    def _determine_backend_type(self, model_name: str) -> BackendType:
-        """Determine the appropriate backend type based on model name.
-        
-        Args:
-            model_name: Name of the model
-            
-        Returns:
-            BackendType: The determined backend type
-        """
-        for pattern in self.GBLLM_PATTERNS:
-            if re.search(pattern, model_name):
-                return BackendType.GBLLM
-        return BackendType.VLLM
     
     def _initialize_backend(self, model_name: str, **kwargs: Any) -> BaseInferenceBackend:
         """Initialize the appropriate backend based on backend type.
@@ -97,4 +75,3 @@ class LLMInference:
                 self.model.generate(prompt, params)
         except Exception as e:
             raise ValueError(f"Generation failed: {str(e)}")
-        
