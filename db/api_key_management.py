@@ -135,6 +135,13 @@ def parse_args():
         help="Path to .env file (default: .env)"
     )
 
+    parser.add_argument(
+        "--db",
+        type=str,
+        default="db/greenbit.db",
+        help="Path to database file (default:greenbit.db)"
+    )
+
     # Required arguments
     parser.add_argument(
         "--name",
@@ -163,7 +170,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def create_api_key(name: str, email: str, organization: str, tier: str = 'basic') -> str:
+def create_api_key(name: str, email: str, organization: str, tier: str = 'basic', db_path: str = 'db/greenbit.db') -> str:
     """Create a new API key with user information and store it in the database."""
     if tier not in TIER_LIMITS:
         raise ValueError(f"Invalid tier: {tier}. Must be one of: {', '.join(TIER_LIMITS.keys())}")
@@ -173,7 +180,7 @@ def create_api_key(name: str, email: str, organization: str, tier: str = 'basic'
         db_dir = Path("db")
         db_dir.mkdir(exist_ok=True)
 
-        with sqlite3.connect("db/greenbit.db") as conn:
+        with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
 
             # Check if email already exists
@@ -278,7 +285,7 @@ def load_config(args):
         'email': args.email or os.getenv('LIBRA_USER_EMAIL'),
         'organization': args.org or os.getenv('LIBRA_ORGANIZATION'),
         'tier': args.tier or os.getenv('LIBRA_API_TIER', 'basic'),
-        'db_path': os.getenv('LIBRA_DB_PATH', 'db/greenbit.db')
+        'db_path': args.db or os.getenv('LIBRA_DB_PATH', 'db/greenbit.db')
     }
 
     # Validate required fields
@@ -303,7 +310,8 @@ def main():
             name=config['name'],
             email=config['email'],
             organization=config['organization'],
-            tier=config['tier']
+            tier=config['tier'],
+            db=config['db_path'],
         )
 
         # Display API key information
