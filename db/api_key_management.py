@@ -311,7 +311,7 @@ def main():
             email=config['email'],
             organization=config['organization'],
             tier=config['tier'],
-            db=config['db_path'],
+            db_path=config['db_path'],
         )
 
         # Display API key information
