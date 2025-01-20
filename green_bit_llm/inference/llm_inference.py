@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, Union
-from backends.base import BaseInferenceBackend
-from backends.green_bit_backend import GBLLMInferenceBackend
-from backends.vllm_backend import VLLMInferenceBackend
+from green_bit_llm.inference.backends.base import BaseInferenceBackend
+from green_bit_llm.inference.backends.green_bit_backend import GBLLMInferenceBackend
+from green_bit_llm.inference.backends.vllm_backend import VLLMInferenceBackend
 from green_bit_llm.common.enum import LayerMode
 from enum import Enum, auto
 import re

@@ -1,0 +1,7 @@
+{
+    "/workspace/models/qwen_save16/Qwen2.5-7B-Instruct": {
+        "wikitext2": 7.646130561828613,
+        "c4_new": 12.997343063354492,
+        "ptb": 13.951070785522461
+    }
+}
