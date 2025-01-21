@@ -149,7 +149,7 @@ test/
 # Logs
 logs/*
 !logs/.gitkeep
-log
+log/*
 
 # databasegit status
 db/*
