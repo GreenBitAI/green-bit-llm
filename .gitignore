@@ -149,9 +149,10 @@ test/
 # Logs
 logs/*
 !logs/.gitkeep
+log
 
 # databasegit status
 db/*
 !db/.gitkeep
 
-.biji.txt
+biji.txt
