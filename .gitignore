@@ -153,3 +153,5 @@ logs/*
 # databasegit status
 db/*
 !db/.gitkeep
+
+.biji.txt
