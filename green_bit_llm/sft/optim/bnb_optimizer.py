@@ -66,7 +66,7 @@ class GlobalOptimManager:
            parameters (`torch.Tensor` or `list(torch.Tensors)`):
              The input parameters.
            key (`str`):
-             The hyperparamter to override.
+             The hyperparameter to override.
            value:
              The hyperparameter values.
            key_value_dict (`dict`):
