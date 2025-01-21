@@ -1,3 +1,0 @@
-[2025-01-13 14:45:11 root] (evaluate.py 95): INFO wikitext2 : 8.081164360046387
-[2025-01-13 14:49:16 root] (evaluate.py 95): INFO c4 : 11.953154563903809
-[2025-01-13 14:50:09 root] (evaluate.py 95): INFO ptb : 13.481657028198242

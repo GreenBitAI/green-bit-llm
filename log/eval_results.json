@@ -1,7 +1,0 @@
-{
-    "/workspace/green-bit-llm/models/Qwen-1.5-14B-layer-mix-bpw-2.5": {
-        "wikitext2": 8.081164360046387,
-        "c4": 11.953154563903809,
-        "ptb": 13.481657028198242
-    }
-}
