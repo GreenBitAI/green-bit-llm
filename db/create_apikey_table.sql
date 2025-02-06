@@ -1,5 +1,9 @@
 -- z.B. sqlite3 greenbit.db < create_tables.sql
 
+-- drop tables if exists
+--DROP TABLE IF EXISTS api_keys;
+--DROP TABLE IF EXISTS users;
+
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
