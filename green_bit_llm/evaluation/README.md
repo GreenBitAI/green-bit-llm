@@ -44,7 +44,11 @@ We have released over 200 highly precise 2.2/2.5/3/4-bit models across the moder
 
 ### PPL Evaluation
 ```bash
-python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4,ptb
+python -m green_bit_llm.evaluation.evaluate --model GreenBitAI/Qwen-1.5-4B-layer-mix-bpw-3.0 --backend greenbit-engine --trust-remote-code --eval-ppl --ppl-tasks wikitext2,c4,ptb
+```
+or
+```bash
+python -m green_bit_llm.evaluation.evaluate --model models/Qwen2.5-7B-Instruct --trust-remote-code --backend vllm --eval-ppl --ppl-tasks wikitext2,c4,ptb
 ```
 
 | **Repository** | **Method** | **Avg bits** | **wikitext 2 (2048)** | **c4 (2048)** |

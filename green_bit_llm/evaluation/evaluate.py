@@ -21,16 +21,20 @@ from peft import PeftModel, LoraConfig, get_peft_model
 from pathlib import Path
  
 from lm_eval import evaluator
-
+from vllm.model_executor.layers.logits_processor import _apply_logits_processors
+from vllm import LLM, SamplingParams
 import warnings
 
 warnings.filterwarnings('ignore')
+
+
 
 # default value for arguments
 DEFAULT_MODEL_PATH = "GreenBitAI/Qwen-1.5-1.8B-layer-mix-bpw-2.2"
 DEFAULT_SEQLEN = 2048
 DEFAULT_RANDOM_SEED = 0
 DTYPE = torch.half
+DEFAULT_MODEL_BCKEND = ["vllm", "greenbit-engine"]
 
 replace_peft_lora_model_with_gba_lora_model()
 
@@ -203,6 +207,18 @@ def setup_arg_parser():
         help="Specify lora dir for lora merge"
 
     )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="vllm",
+        help="Specify the model inference backend from [vllm, greenbit-engine]"
+    )
+    parser.add_argument(
+        "--gpu-memory-utilization",
+        type=float,
+        default=0.8,
+        help="only useful when using vllm backend."
+    )
     return parser
 
 
@@ -212,10 +228,10 @@ def create_device_map(cuda_device_id):
     device_map = {f"cuda:{id}" for id in ids}
     return device_map
 
-def main(args):
+def evaluate_green_bit_engine(args):
     if not os.path.exists(Path(args.save_dir)):
         os.mkdir(Path(args.save_dir))
-
+        
     # Building configs
     tokenizer_config = {"trust_remote_code": True if args.trust_remote_code else None}
     pretrain_model_config = {
@@ -225,7 +241,7 @@ def main(args):
 
     if args.eos_token is not None:
         tokenizer_config["eos_token"] = args.eos_token
-    
+
     model, tokenizer, config = load(
         args.model,
         tokenizer_config=tokenizer_config,
@@ -235,7 +251,7 @@ def main(args):
         model_config=pretrain_model_config,
         requires_grad=False
     )
-    
+
     if args.lora_dir is not None:
         config = LoraConfig(
             r=64,
@@ -258,7 +274,97 @@ def main(args):
 
     eval_results = {"{}".format(args.model): eval_results}
 
-    add_dict_to_json_file(file_path="{}".format(os.path.join(args.save_dir, "eval_results.json")), new_data=eval_results)
+    add_dict_to_json_file(file_path="{}".format(os.path.join(args.save_dir, "eval_greenbit_engine_results.json")), new_data=eval_results)
+
+def evaluate_vllm(args):
+    logits_list = []
+    def forward_hook(module, input, output):
+        lm_head, hidden_states, sampling_metadata, *embedding_bias = input
+        embedding_bias = embedding_bias[0] if embedding_bias else None
+        logits = module._get_logits(hidden_states, lm_head, embedding_bias)
+        if logits is not None:
+            if module.soft_cap is not None:
+                logits = logits / module.soft_cap
+                logits = torch.tanh(logits)
+                logits = logits * module.soft_cap
+            if module.scale != 1.0:
+                logits *= module.scale
+            logits = _apply_logits_processors(logits, sampling_metadata)
+            logits_list.append(logits)
+        return output 
+    
+    @torch.no_grad()
+    def calculate_ppl(model, testenc, seqlen, device='cuda'):
+        nsamples = testenc.numel() // seqlen
+        nlls = []
+        
+        sampling_params = SamplingParams(
+            temperature=1.0,
+            max_tokens=1,
+            logprobs=None
+        )
+        
+        for i in tqdm(range(nsamples)):
+            logits_list.clear()
+            batch = testenc[:, (i * seqlen):((i + 1) * seqlen)]
+            outputs = model.generate(prompts=None, prompt_token_ids=batch.tolist(), sampling_params=sampling_params)
+            logits = logits_list[0].to(device)
+            logits = logits.unsqueeze(0)
+            shift_logits = logits[:, :-1, :]
+            shift_labels = testenc[:, (i * seqlen): ((i + 1) * seqlen)][
+                            :, 1:
+                            ].to(device)
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1),
+            )
+            neg_log_likelihood = loss.float() * seqlen
+            nlls.append(neg_log_likelihood)
+        ppl = torch.exp(torch.stack(nlls).sum() / (nsamples * seqlen))
+        return ppl.item()
+    
+    print(f"Loading model from {args.model}")
+    model = LLM(
+        model=args.model,
+        trust_remote_code=args.trust_remote_code,
+        gpu_memory_utilization=args.gpu_memory_utilization
+    )
+    model.llm_engine.model_executor.driver_worker.model_runner.model.logits_processor.register_forward_hook(forward_hook)
+        
+    results = {}
+    logger = create_logger(Path(args.save_dir))
+    if args.eval_ppl:
+        for dataset in args.ppl_tasks.split(","):
+            # print(f"\nEvaluating {dataset}...")
+            dataloader, testloader = get_loaders(
+                dataset.strip(),
+                seed=args.seed,
+                model=args.model,
+                seqlen=args.seqlen,
+            )
+            
+            if "c4" in dataset:
+                testenc = testloader
+            else:
+                testenc = testloader.input_ids
+    
+            ppl = calculate_ppl(model, testenc, args.seqlen)
+            logger.info(f'{dataset} : {ppl}')
+            results[dataset] = ppl
+
+    eval_results = {args.model: results}
+    
+    add_dict_to_json_file(file_path="{}".format(os.path.join(args.save_dir, "eval_vllm_results.json")), new_data=eval_results)
+    
+def main(args):
+    if args.backend not in DEFAULT_MODEL_BCKEND:
+        print(f"Backend is error, please set the backend from {DEFAULT_MODEL_BCKEND}")
+        exit(-1)
+    if args.backend == "vllm":
+        evaluate_vllm(args)
+    elif args.backend == "greenbit-engine":
+        evaluate_green_bit_engine(args)
 
 if __name__ == "__main__":
     if not torch.cuda.is_available():
