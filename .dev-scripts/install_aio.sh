@@ -16,9 +16,9 @@ mkdir -p "${WORK_DIR}"
 pushd "${WORK_DIR}"
 
 
-########################
-# 1. install miniconda #
-########################
+#=================================#
+# 1. install miniconda            #
+#=================================#
 : "${MINICONDA_INSTALLER:="Miniconda3-latest-Linux-x86_64.sh"}"
 : "${MINICONDA_DIR:="${HOME}/miniconda"}"
 
@@ -26,9 +26,9 @@ wget "https://repo.anaconda.com/miniconda/${MINICONDA_INSTALLER}" -O miniconda.s
 bash miniconda.sh -f -b -u -p "${MINICONDA_DIR}"
 
 
-###################################
+#=================================#
 # 2. setup base conda environment #
-###################################
+#=================================#
 : "${CONDA_ENV_PREFIX:="${INSTALL_DIR}/conda-env"}"
 : "${PYTHON_VERSION:="3.10"}"
 : "${CUDA_VERSION:="12.1.0"}"
@@ -43,5 +43,10 @@ conda install -y -c "nvidia/label/cuda-${CUDA_VERSION}" cuda-toolkit
 pip install "${CUSTOM_TORCH_PKG_PATH}" "${BIE_PKG_PATH}"
 pip install green-bit-llm
 MAX_JOBS="${FA2_MAX_JOBS}" pip install flash-attn --no-build-isolation
+
+#=================================#
+# 3. clean up                     #
+#=================================#
+pip cache purge
 
 popd
