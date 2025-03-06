@@ -182,8 +182,7 @@ def get_model_key(request_model: str) -> str:
     # If no exact match, try standardizing the model name format
     model_families = {
         "qwen-2.5-7b": ["qwen2.5-7b", "qwen-2.5-7b"],
-        "llama-3-8b": ["llama3-8b", "llama-3-8b"],
-        "llama-3.2-3b": ["llama3.2-3b", "llama-3.2-3b"]
+        "llama-3-8b": ["llama3-8b", "llama-3-8b"]
     }
 
     for standard_name, variants in model_families.items():
