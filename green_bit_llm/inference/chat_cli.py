@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules
 import torch
 
 # Add the parent directory to sys.path
-from .utils import str_to_torch_dtype, is_chat_model
+from .utils import str_to_torch_dtype
 
 try:
     from .chat_base import chat_loop, SimpleChatIO, RichChatIO
@@ -37,11 +37,6 @@ def main(args):
         chatio = RichChatIO(args.multiline, args.mouse)
     else:
         raise ValueError(f"Invalid style for console: {args.style}")
-
-    # check if a chat model selected?
-    if not is_chat_model(args.model.lower()):
-        raise Exception("Invalid model path: The provided model is not a chat model. "
-                        "A valid chat model is required to establish the chat interface.")
 
     # Building configs
     tokenizer_config = {"trust_remote_code": True if args.trust_remote_code else None}

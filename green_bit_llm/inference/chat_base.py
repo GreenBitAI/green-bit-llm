@@ -22,9 +22,14 @@ from rich.markdown import Markdown
 import torch
 
 from green_bit_llm.common import load
-
-from .conversation import get_conv_template
-from .utils import is_partial_stop, is_sentence_complete, get_context_length, prepare_logits_processor, get_conversation_template
+from green_bit_llm.inference.conversation import get_conv_template
+from green_bit_llm.inference.utils import (
+    is_partial_stop,
+    is_sentence_complete,
+    get_context_length,
+    prepare_logits_processor,
+    get_conversation_template
+)
 
 
 class ChatIO(abc.ABC):

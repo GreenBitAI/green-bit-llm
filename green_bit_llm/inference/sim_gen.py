@@ -61,10 +61,15 @@ def setup_arg_parser():
         action="store_true",
         help="Use the default chat template",
     )
+    parser.add_argument(
+        "--enable-thinking",
+        action="store_true",
+        help="Enable thinking mode for Qwen-3 models.",
+    )
     return parser
 
 
-def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: str):
+def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: str, enable_thinking: bool):
     """
     This function generates text based on a given prompt using a model and tokenizer.
     It handles optional pre-processing with chat templates if specified in the arguments.
@@ -75,7 +80,10 @@ def do_generate(args, model: nn.Module, tokenizer: PreTrainedTokenizer, prompt: 
     ):
         messages = [{"role": "user", "content": prompt}]
         prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=enable_thinking
         )
     else:
         prompt = prompt
@@ -132,9 +140,9 @@ def main(args):
             user_input = input("Input prompt or type 'exit' to quit): ")
             if user_input.lower() in ['exit', 'quit']:
                 break
-            do_generate(args, model, tokenizer, user_input)
+            do_generate(args, model, tokenizer, user_input, args.enable_thinking)
     else:
-        do_generate(args, model, tokenizer, args.prompt)
+        do_generate(args, model, tokenizer, args.prompt, args.enable_thinking)
 
 
 if __name__ == "__main__":

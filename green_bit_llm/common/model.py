@@ -1,20 +1,44 @@
+import os
+import json
+import time
 from pathlib import Path
 from typing import Optional, Tuple, Dict
-import json
-import os
 
 import torch
 import torch.nn as nn
 
-from transformers import PreTrainedTokenizer, AutoTokenizer, AutoConfig, AutoModelForCausalLM, PreTrainedModel, logging
 import accelerate
+from transformers import (
+    PreTrainedTokenizer,
+    AutoTokenizer,
+    AutoConfig,
+    AutoModelForCausalLM,
+    PreTrainedModel,
+    logging
+)
+
 from auto_gptq.nn_modules.qlinear.qlinear_cuda import QuantLinear
 
-from .utils import get_layer_mode, get_packed_info, get_model_path, find_layers, apply_dtype_to
-from .utils import STRATEGY_FILE_NAME, MODEL_TYPE_QWEN2, STRATEGY_FILE_JSON_ROOT
-from .enum import LayerMode, TextGenMode
+from green_bit_llm.common.enum import LayerMode, TextGenMode
+from green_bit_llm.common.utils import (
+    get_layer_mode,
+    get_packed_info,
+    get_model_path,
+    find_layers,
+    apply_dtype_to,
+    apply_quant_strategy
+)
 
-import time
+from green_bit_llm.common.utils import (
+    STRATEGY_FILE_NAME,
+    MODEL_TYPE_QWEN2,
+    STRATEGY_FILE_JSON_ROOT
+)
+from green_bit_llm.patches.qwen3_moe_patch import apply_qwen3_moe_patch, restore_qwen3_moe_patch
+
+from colorama import init, Fore, Style
+init(autoreset=True)
+
 
 ENGINE_AVAILABLE = True
 try:
@@ -23,9 +47,6 @@ try:
 except ModuleNotFoundError as e:
     ENGINE_AVAILABLE = False
     print(f"Error: Module not found: {e}.")
-
-from colorama import init, Fore, Style
-init(autoreset=True)
 
 
 def engine_layer_prepare(model: torch.nn.Module):
@@ -42,31 +63,25 @@ def engine_layer_prepare(model: torch.nn.Module):
             if target_layer_name == '': target_layer_name = m.__class__.__name__
     print(Style.BRIGHT + Fore.CYAN + 'Info: {} parameter preparation finished.'.format(target_layer_name))
 
-
-def apply_quant_strategy(name_attr: str, quant_strategy: Dict):
-    """
-    Apply quantization strategy based on the layer's name and the provided strategy.
-    """
-    strategy = None
-    for key in ['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj', 'qkv_proj', 'gate_up_proj']:
-        if key in name_attr:
-            try:
-                strategy = quant_strategy[key]
-                break
-            except KeyError:
-                pass
-    return strategy
-
-
 def get_disable_bias(name_attr: str, model_type) -> bool:
     """
     Usually the linear layer of llm disables bias. The three components 'q_proj', 'k_proj', and 'v_proj' in the qwen2 model attention module are exceptions.
+    Updated to handle DeepSeek V3 decomposed attention layers.
     """
+    # Original Qwen2 exception
     for key in ['q_proj', 'k_proj', 'v_proj']:
         if key in name_attr and model_type == MODEL_TYPE_QWEN2:
             return False
-    return True
 
+    # DeepSeek V3 decomposed attention layers might have different bias settings
+    # Check for decomposed attention layers
+    deepseek_attention_layers = ['q_a_proj', 'q_b_proj', 'kv_a_proj_with_mqa', 'kv_b_proj']
+    for key in deepseek_attention_layers:
+        if key in name_attr:
+            # For DeepSeek models, these layers typically don't use bias
+            return True
+
+    return True
 
 def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Optional[int] = None, bits: Optional[int] = None,
                dtype: torch.dtype = torch.half, quant_strategy = None, model_type = None, requires_grad: bool = False):
@@ -97,6 +112,11 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
         if name_attr in names:
             strategy = apply_quant_strategy(name_attr, quant_strategy) if quant_strategy else None
             if strategy:
+                # Handle special case where moe_gate might not be quantized
+                if isinstance(strategy, dict) and 'desc' in strategy and 'Not quantized' in strategy['desc']:
+                    print(Style.BRIGHT + Fore.YELLOW + f"Info: Skipping quantization for {name_attr} (marked as not quantized)")
+                    continue
+
                 groups, rows = get_packed_info(tmp.in_features, strategy["bits"], strategy["bits_prop"], strategy["group_size"])
                 bits = strategy["bits"][0]
                 group_size = strategy["group_size"][str(bits)]
@@ -104,11 +124,11 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
             disable_bias = get_disable_bias(name_attr, model_type)
 
             # Check if auto_gptq.QuantLinear is used
-            is_quant_linear = isinstance(tmp, QuantLinear)
-            use_gba_quant = not is_quant_linear
-            asym = is_quant_linear
-            in_c = tmp.infeatures if is_quant_linear else tmp.in_features
-            out_c = tmp.outfeatures if is_quant_linear else tmp.out_features
+            is_auto_gptq_quant_linear = isinstance(tmp, QuantLinear)
+            use_gba_quant = not is_auto_gptq_quant_linear
+            asym = is_auto_gptq_quant_linear
+            in_c = tmp.infeatures if is_auto_gptq_quant_linear else tmp.in_features
+            out_c = tmp.outfeatures if is_auto_gptq_quant_linear else tmp.out_features
 
             common_params = {
                 "in_channels": in_c,
@@ -132,7 +152,6 @@ def make_quant(module, names, layer_mode: LayerMode, name='', group_size: Option
     for name_attr, child in module.named_children():
         name_sub = f'{name}.{name_attr}' if name else name_attr
         make_quant(child, names, layer_mode, name_sub, group_size, bits, dtype, quant_strategy, model_type, requires_grad)
-
 
 def load_strategy_file(model_path: Path, layer_mode: LayerMode) -> Dict:
     """
@@ -159,10 +178,9 @@ def load_strategy_file(model_path: Path, layer_mode: LayerMode) -> Dict:
             raise FileNotFoundError(f"Error: Strategy config file not found in {model_path}")
     return strategy
 
-
-def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits: Optional[int] = None, group_size: Optional[int] = None,
-               dtype: torch.dtype = torch.half, device_map: set = {"cuda:0"}, seqlen: int = 2048,
-               model_config: Dict = {}, requires_grad: bool = False) -> nn.Module:
+def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits: Optional[int] = None,
+               group_size: Optional[int] = None, dtype: torch.dtype = torch.half, device_map: set = {"cuda:0"},
+               seqlen: int = 2048, model_config: Dict = {}, requires_grad: bool = False) -> nn.Module:
     """
     Load and initialize a model from the given path with options for quantization and device distribution.
 
@@ -186,48 +204,97 @@ def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits
     """
     logging.set_verbosity_error()
 
-    start_time = time.time()
-    print(Style.BRIGHT + Fore.CYAN + "Info: Loading Model ...")
+    # Check if it is a Qwen3 MoE model and apply the patch
+    is_qwen3_moe = hasattr(config, 'model_type') and 'qwen3' in config.model_type.lower() and getattr(config, 'num_experts', 0) > 0
+    if is_qwen3_moe:
+        print(Style.BRIGHT + Fore.CYAN + "Info: Detected Qwen3 MoE model, applying quantization-friendly patch...")
+        apply_qwen3_moe_patch()
 
-    # Load quantization strategy if applicable
-    strategy = load_strategy_file(model_path, layer_mode)
+    try:
+        start_time = time.time()
+        print(Style.BRIGHT + Fore.CYAN + "Info: Loading Model ...")
+        print(f"Model path: {model_path}")
+        print(f"Layer mode: {layer_mode}")
 
-    # Initialize model with empty weights and load configuration
-    with accelerate.init_empty_weights():
-        model = AutoModelForCausalLM.from_pretrained(model_path, config=config, torch_dtype=dtype, **model_config).eval()
+        # Load quantization strategy if applicable
+        strategy = load_strategy_file(model_path, layer_mode)
 
-        # Quantize layers as necessary
-        for i, layer in enumerate(model.model.layers):
-            layers = find_layers(layer)
-            layers_to_quantize = {name: layer for name, layer in layers.items() if name != 'lm_head'}
+        # Initialize model with empty weights and load configuration
+        with accelerate.init_empty_weights():
+            model = AutoModelForCausalLM.from_pretrained(model_path, config=config, torch_dtype=dtype, **model_config).eval()
 
-            strategy_per_block = strategy.get(f"model.layers.{i}") if strategy else None
+            # Check if this is a large MoE model and warn user about processing time
+            total_layers = len(model.model.layers)
+            if strategy and any('moe_expert' in str(v) for v in strategy.values() if isinstance(v, dict)):
+                print(
+                    Style.BRIGHT + Fore.CYAN + f"Info: Detected MoE model with {total_layers} layers. "
+                                               f"This may take longer to process...")
 
-            make_quant(layer, layers_to_quantize, layer_mode=layer_mode, group_size=group_size, bits=bits, dtype=dtype,
-                       quant_strategy=strategy_per_block, model_type=config.model_type, requires_grad=requires_grad)
+            # Quantize layers as necessary
+            for i, layer in enumerate(model.model.layers):
+                layers = find_layers(layer)
 
-    # If we need to bind weights, delete the meta tensor of lm_head
-    if config.tie_word_embeddings:
-        print(Style.BRIGHT + Fore.CYAN + "Info: Using tied word embeddings, removing lm_head meta tensor")
-        if hasattr(model, 'lm_head'):
-            if hasattr(model.lm_head, 'weight'):
-                delattr(model.lm_head, 'weight')
+                # Filter out lm_head and prepare layers for quantization
+                layers_to_quantize = {name: layer for name, layer in layers.items() if name != 'lm_head'}
 
-        model.tie_weights()
+                # Get strategy for this specific layer block
+                strategy_per_block = strategy.get(f"model.layers.{i}") if strategy else None
 
-    # Load checkpoint, dispatch model, and apply post-initialization configurations
-    model = accelerate.load_checkpoint_and_dispatch(model=model, checkpoint=model_path, device_map=device_map,
-                                                    no_split_module_classes=["LlamaDecoderLayer"])
-    model.seqlen = seqlen
-    engine_layer_prepare(model)  # Assuming this prepares the model's engine layers post-initialization
-    apply_dtype_to(model, dtype)  # Assuming this function applies the dtype to all model parameters
+                # Log different layer types for debugging
+                if strategy_per_block and i < 5:  # Only log first few layers to avoid spam
+                    layer_type = "Standard FFN"
+                    if 'moe_expert_gate_proj' in strategy_per_block:
+                        expert_count = sum(1 for k in layers_to_quantize.keys() if 'experts.' in k and 'gate_proj' in k)
+                        layer_type = f"MoE with {expert_count // 3} experts"  # Divide by 3 because gate/up/down
+                        if 'moe_shared_expert_gate_proj' in strategy_per_block:
+                            layer_type += " + Shared Expert"
 
-    print(Style.BRIGHT + Fore.CYAN + f"Info: Apply dtype: {dtype} to the model.")
-    print(Style.BRIGHT + Fore.CYAN + f'Info: Total {torch.cuda.memory_allocated() / 1024**3:.2f} GiB VRAM used.')
-    print(Style.BRIGHT + Fore.CYAN + f"Info: Loaded the model in {time.time() - start_time:.2f} seconds.")
+                    print(Style.BRIGHT + Fore.CYAN + f"Info: Layer {i}: {layer_type}")
 
-    return model
+                make_quant(layer, layers_to_quantize, layer_mode=layer_mode, group_size=group_size, bits=bits, dtype=dtype,
+                           quant_strategy=strategy_per_block, model_type=config.model_type, requires_grad=requires_grad)
 
+                # Print progress for large models
+                if (i + 1) % 5 == 0:
+                    print(Style.BRIGHT + Fore.CYAN + f"Info: Quantized {i + 1}/{total_layers} layers")
+
+        # If we need to bind weights, delete the meta tensor of lm_head
+        if config.tie_word_embeddings:
+            print(Style.BRIGHT + Fore.CYAN + "Info: Using tied word embeddings, removing lm_head meta tensor")
+            if hasattr(model, 'lm_head'):
+                if hasattr(model.lm_head, 'weight'):
+                    delattr(model.lm_head, 'weight')
+            model.tie_weights()
+
+        # Load checkpoint, dispatch model, and apply post-initialization configurations
+        # Extended no_split_module_classes for various MoE architectures
+        no_split_classes = [
+            "LlamaDecoderLayer", "MixtralDecoderLayer", "Qwen2MoeDecoderLayer",
+            "Qwen3MoeDecoderLayer", "DeepSeekV3DecoderLayer"
+        ]
+
+        print(Style.BRIGHT + Fore.CYAN + "Info: Loading model weights and dispatching to devices...")
+        # Load checkpoint, dispatch model, and apply post-initialization configurations
+        model = accelerate.load_checkpoint_and_dispatch(model=model, checkpoint=model_path, device_map=device_map,
+                                                        no_split_module_classes=no_split_classes)
+        model.seqlen = seqlen
+
+        print(Style.BRIGHT + Fore.CYAN + "Info: Preparing engine layers...")
+        engine_layer_prepare(model)  # Assuming this prepares the model's engine layers post-initialization
+
+        print(Style.BRIGHT + Fore.CYAN + "Info: Applying final dtype conversion...")
+        apply_dtype_to(model, dtype)  # Assuming this function applies the dtype to all model parameters
+
+        print(Style.BRIGHT + Fore.CYAN + f"Info: Apply dtype: {dtype} to the model.")
+        print(Style.BRIGHT + Fore.CYAN + f'Info: Total {torch.cuda.memory_allocated() / 1024**3:.2f} GiB VRAM used.')
+        print(Style.BRIGHT + Fore.CYAN + f"Info: Loaded the model in {time.time() - start_time:.2f} seconds.")
+
+        return model
+    except Exception as e:
+        # If an error occurs, make sure to restore the original state
+        if is_qwen3_moe:
+            restore_qwen3_moe_patch()
+        raise e
 
 def load(
     path_or_hf_repo: str,
@@ -263,13 +330,11 @@ def load(
         raise Exception("Error: Bitorch Engine layers are not available.")
 
     model_path = get_model_path(path_or_hf_repo)
-
     config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
 
     layer_mode, bits, group_size = get_layer_mode(path_or_hf_repo, config)
 
     model = load_model(model_path, config, layer_mode, bits, group_size, dtype, device_map, seqlen, model_config, requires_grad)
-
     tokenizer = AutoTokenizer.from_pretrained(path_or_hf_repo, **tokenizer_config)
 
     return model, tokenizer, config
@@ -322,38 +387,16 @@ def generate(
         print(f"Prompt: {prompt}")
         tic = time.perf_counter()
 
-    # Encode the prompt text to tensor
-    input_ids = tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=True).to(device)
+    add_special_tokens = tokenizer.bos_token is None or not prompt.startswith(
+        tokenizer.bos_token
+    )
 
-    # Generation settings
-    prompt_length = len(input_ids[0])
+    # Encode the prompt text to tensor
+    input_ids = tokenizer.encode(prompt, return_tensors="pt", add_special_tokens=add_special_tokens).to(device)
 
     with torch.no_grad():
-        # prompt time
-        output_sequences = model.generate(
-            input_ids=input_ids,
-            temperature=temp,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-            use_cache=True,
-            do_sample=True,
-            max_new_tokens=1,
-            top_k=top_k,
-            output_scores=output_scores,
-            return_dict_in_generate=return_dict_in_generate,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id
-        )
-
         if verbose:
-            prompt_duration = time.perf_counter() - tic
             print(f"generating ... ")
-            tic = time.perf_counter()
-
-        # Update input_ids for next iteration
-        input_ids = output_sequences['sequences']
 
         if gen_mode == TextGenMode.SEQUENCE:
             output_sequences = model.generate(
@@ -372,19 +415,22 @@ def generate(
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id
             )
-            # Decode generated sequence
-            generated_sequence = tokenizer.decode(output_sequences['sequences'].tolist()[0], clean_up_tokenization_spaces=True)
-            # Remove the prompt at the beginning of the sequence
-            generated_sequence = generated_sequence[len(tokenizer.decode(input_ids[0], clean_up_tokenization_spaces=True)):]
+
+            full_sequence = tokenizer.decode(output_sequences['sequences'][0], clean_up_tokenization_spaces=True)
+
+            original_prompt_text = tokenizer.decode(input_ids[0], clean_up_tokenization_spaces=True)
+            generated_sequence = full_sequence[len(original_prompt_text):]
 
             if verbose:
-                print(f"Generated text: {generated_sequence}")
+                print(f"{generated_sequence}")
 
         elif gen_mode == TextGenMode.TOKEN:
             generated_tokens = []
+            current_input_ids = input_ids
+
             for _ in range(max_tokens):
                 output_sequences = model.generate(
-                    input_ids=input_ids,
+                    input_ids=current_input_ids,
                     temperature=temp,
                     top_p=top_p,
                     repetition_penalty=repetition_penalty,
@@ -399,22 +445,24 @@ def generate(
                     pad_token_id=tokenizer.eos_token_id,
                     eos_token_id=tokenizer.eos_token_id
                 )
-                # Decode generated token
-                s = tokenizer.decode(output_sequences['sequences'].tolist()[0][-1],
-                                                   clean_up_tokenization_spaces=True)
-                generated_tokens.append(s)
-                input_ids = output_sequences['sequences']  # Update input_ids for next iteration
 
-                # Print the generated token
+                new_token_id = output_sequences['sequences'][0][-1]
+                new_token = tokenizer.decode([new_token_id], clean_up_tokenization_spaces=True)
+                generated_tokens.append(new_token)
+
+                current_input_ids = output_sequences['sequences']
+
                 if verbose:
-                    print(s + ' ', end='', flush=True)
+                    print(new_token, end='', flush=True)
+
+                if new_token_id == tokenizer.eos_token_id:
+                    break
+
             generated_sequence = "".join(generated_tokens)
 
     if verbose:
         gen_duration = time.perf_counter() - tic
-        prompt_tps = prompt_length / prompt_duration
-        gen_tps = max_tokens / gen_duration
-        print(f"\nprompt: {prompt_tps:.2f} token/s")
-        print(f"generation: {gen_tps:.2f} token/s")
+        gen_tps = max_tokens / gen_duration if gen_duration > 0 else 0
+        print(f"\ngeneration: {gen_tps:.2f} token/s")
 
     return generated_sequence

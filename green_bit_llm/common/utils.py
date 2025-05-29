@@ -1,15 +1,16 @@
-from pathlib import Path
 import re
+from pathlib import Path
+from typing import Dict
+
 import torch.nn as nn
 import torch
 
 from huggingface_hub import snapshot_download
-
 from transformers import AutoConfig
 
 from auto_gptq.nn_modules.qlinear.qlinear_cuda import QuantLinear
 
-from .enum import LayerMode
+from green_bit_llm.common.enum import LayerMode
 
 STRATEGY_FILE_NAME = "quant_strategy.json"
 MODEL_TYPE_QWEN2 = "qwen2"
@@ -231,3 +232,110 @@ def apply_dtype_to(model: nn.Module, dtype: torch.dtype):
     else:
         # If the dtype is not supported, raise an error.
         raise ValueError("Unsupported dtype specified. Supported dtypes are torch.float, torch.half, and torch.bfloat16.")
+
+def apply_quant_strategy(name_attr: str, quant_strategy: Dict):
+    """
+    Apply quantization strategy based on the layer's name and the provided strategy.
+    Updated to support DeepSeek V2 MoE models and other complex architectures.
+    """
+    strategy = None
+
+    # DeepSeek V2 style attention projections (decomposed Q/K/V)
+    deepseek_attention_mapping = {
+        'q_a_proj': 'q_a_proj',
+        'q_b_proj': 'q_b_proj',
+        'kv_a_proj_with_mqa': 'kv_a_proj_with_mqa',
+        'kv_b_proj': 'kv_b_proj'
+    }
+
+    for layer_name, strategy_key in deepseek_attention_mapping.items():
+        if layer_name in name_attr:
+            try:
+                strategy = quant_strategy[strategy_key]
+                return strategy
+            except KeyError:
+                pass
+
+    # Standard attention projections (for backward compatibility)
+    standard_attention_keys = ['q_proj', 'k_proj', 'v_proj', 'o_proj']
+    for key in standard_attention_keys:
+        if key in name_attr and not any(prefix in name_attr for prefix in ['q_a_', 'q_b_', 'kv_a_', 'kv_b_']):
+            try:
+                strategy = quant_strategy[key]
+                return strategy
+            except KeyError:
+                pass
+
+    # MoE gate layer (router) - includes both weight and bias
+    # DeepSeek V2 has: mlp.gate.weight and mlp.gate.e_score_correction_bias
+    if ('mlp.gate.' in name_attr or name_attr.endswith('mlp.gate')) and 'experts' not in name_attr:
+        try:
+            strategy = quant_strategy['moe_gate']
+            return strategy
+        except KeyError:
+            pass
+
+    # MoE shared expert layers (DeepSeek V2 specific)
+    # Note: actual path is 'mlp.shared_experts.' (plural)
+    if 'mlp.shared_experts.' in name_attr or 'shared_experts.' in name_attr:
+        if '.gate_proj' in name_attr or 'gate_proj' in name_attr:
+            try:
+                strategy = quant_strategy['moe_shared_expert_gate_proj']
+                return strategy
+            except KeyError:
+                pass
+        elif '.up_proj' in name_attr or 'up_proj' in name_attr:
+            try:
+                strategy = quant_strategy['moe_shared_expert_up_proj']
+                return strategy
+            except KeyError:
+                pass
+        elif '.down_proj' in name_attr or 'down_proj' in name_attr:
+            try:
+                strategy = quant_strategy['moe_shared_expert_down_proj']
+                return strategy
+            except KeyError:
+                pass
+
+    # MoE expert layers - match any expert number (supports 100+ experts)
+    if 'mlp.experts.' in name_attr:
+        if '.gate_proj' in name_attr:
+            try:
+                strategy = quant_strategy['moe_expert_gate_proj']
+                return strategy
+            except KeyError:
+                pass
+        elif '.up_proj' in name_attr:
+            try:
+                strategy = quant_strategy['moe_expert_up_proj']
+                return strategy
+            except KeyError:
+                pass
+        elif '.down_proj' in name_attr:
+            try:
+                strategy = quant_strategy['moe_expert_down_proj']
+                return strategy
+            except KeyError:
+                pass
+
+    # Fallback to standard FFN layers (non-MoE layers)
+    standard_ffn_keys = ['gate_proj', 'up_proj', 'down_proj']
+    for key in standard_ffn_keys:
+        if key in name_attr and 'experts' not in name_attr and 'shared_experts' not in name_attr:
+            try:
+                strategy = quant_strategy[key]
+                return strategy
+            except KeyError:
+                pass
+
+    # Additional fallback for other layer types
+    fallback_keys = ['qkv_proj', 'gate_up_proj']
+    for key in fallback_keys:
+        if key in name_attr:
+            try:
+                strategy = quant_strategy[key]
+                return strategy
+            except KeyError:
+                pass
+
+    return strategy
