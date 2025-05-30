@@ -94,16 +94,16 @@ A high-performance HTTP API for text generation with GreenBitAI's low-bit models
 #### Quick Start
 1. Run:
    ```shell
-   python -m green_bit_llm.serve.api.v1.fastapi_server --model GreenBitAI/Qwen-3-1.7B-layer-mix-bpw-4.0 --host 127.0.0.1 --port 8000
+   CUDA_VISIBLE_DEVICES=0 python -m green_bit_llm.serve.api.v1.fastapi_server --model GreenBitAI/Qwen-3-1.7B-layer-mix-bpw-4.0 --host 127.0.0.1 --port 11668
    ```
 2. Use:
    ```shell
    # Chat
-   curl http://localhost:8000/v1/GreenBitAI-Qwen-3-17B-layer-mix-bpw-40/chat/completions -H "Content-Type: application/json" \
+   curl http://localhost:11668/v1/GreenBitAI-Qwen-3-17B-layer-mix-bpw-40/chat/completions -H "Content-Type: application/json" \
      -d '{"model": "default_model", "messages": [{"role": "user", "content": "Hello!"}]}'
    
    # Chat stream
-   curl http://localhost:8000/v1/GreenBitAI-Qwen-3-17B-layer-mix-bpw-40/chat/completionss -H "Content-Type: application/json"  \
+   curl http://localhost:11668/v1/GreenBitAI-Qwen-3-17B-layer-mix-bpw-40/chat/completions -H "Content-Type: application/json"  \
      -d '{"model": "default_model", "messages": [{"role": "user", "content": "Hello!"}], "stream": "True"}'
    ```
    

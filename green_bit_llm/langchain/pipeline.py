@@ -160,14 +160,23 @@ class GreenBitPipeline(BaseLLM):
             messages = [{"role": "user", "content": text}]
 
             # Prepare template arguments
-            template_kwargs = {"add_generation_prompt": True}
+            template_kwargs = {
+                "add_generation_prompt": True,
+                "tokenize": False,  # 添加这行，确保返回字符串
+            }
 
             # Add enable_thinking for Qwen3 models if provided
             enable_thinking = kwargs.get('enable_thinking')
             if enable_thinking is not None:
                 template_kwargs["enable_thinking"] = enable_thinking
 
-            return self.pipeline.tokenizer.apply_chat_template(messages, **template_kwargs)
+            result = self.pipeline.tokenizer.apply_chat_template(messages, **template_kwargs)
+
+            # 确保返回字符串
+            if isinstance(result, list):
+                return self.pipeline.tokenizer.decode(result, skip_special_tokens=False)
+            return result
+
         except Exception:
             # If template application fails, return original text
             return text
@@ -270,6 +279,15 @@ class GreenBitPipeline(BaseLLM):
 
         return LLMResult(generations=generations)
 
+    def _generate(
+            self,
+            prompts: List[str],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+    ) -> LLMResult:
+        """Generate method required by BaseLLM"""
+        return self.generate(prompts, stop, run_manager, **kwargs)
 
     def stream(
             self,
