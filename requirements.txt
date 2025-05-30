@@ -3,7 +3,7 @@ colorama
 datasets
 torch>=2.0.0
 sentencepiece
-git+https://github.com/huggingface/transformers.git
+transformers>=4.52.4
 huggingface-hub
 lm-eval==0.3.0
 termcolor

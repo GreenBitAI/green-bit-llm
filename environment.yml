@@ -9,7 +9,7 @@ dependencies:
   - pip:
       - sentencepiece
       - huggingface-hub
-      - transformers>=4.38.0
+      - transformers>=4.52.4
       - accelerate
       - colorama
       - datasets
