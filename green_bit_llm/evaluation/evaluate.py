@@ -1,28 +1,21 @@
 import os
 import argparse
 import sys
+import warnings
+from pathlib import Path
+from tqdm import tqdm
+
+from lm_eval import evaluator
+from peft import PeftModel, LoraConfig, get_peft_model
 
 import torch
 import torch.nn as nn
 
-from tqdm import tqdm
-
-import safetensors
-from peft import PeftModel, LoraConfig, get_peft_model
-
-from .lmclass import LMClass
-from .utils import create_logger, add_dict_to_json_file
-from .datautils import get_loaders
-
+from green_bit_llm.evaluation.lmclass import LMClass
+from green_bit_llm.evaluation.utils import create_logger, add_dict_to_json_file
+from green_bit_llm.evaluation.datautils import get_loaders
 from green_bit_llm.common import load
-from green_bit_llm.common.utils import get_model_path
 from green_bit_llm.sft.peft_utils.model import *
-from peft import PeftModel, LoraConfig, get_peft_model
-from pathlib import Path
- 
-from lm_eval import evaluator
-
-import warnings
 
 warnings.filterwarnings('ignore')
 
@@ -33,6 +26,7 @@ DEFAULT_RANDOM_SEED = 0
 DTYPE = torch.half
 
 replace_peft_lora_model_with_gba_lora_model()
+
 
 @torch.no_grad()
 def lm_evaluate(lm, args, logger):

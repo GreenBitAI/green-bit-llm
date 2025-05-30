@@ -4,15 +4,14 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.llms import BaseLLM
 from langchain_core.outputs import Generation, GenerationChunk, LLMResult
 
-from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer, StoppingCriteria, StoppingCriteriaList
+from transformers import (
+    pipeline, AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer, StoppingCriteria, StoppingCriteriaList
+)
 import torch
 from threading import Thread
-import re
 
 from green_bit_llm.common import load
 from green_bit_llm.common.utils import check_engine_available
-from green_bit_llm.inference.conversation import get_conv_template, SeparatorStyle, Conversation
-from .response_format_handler import ResponseFormatHandler
 
 DEFAULT_MODEL_ID = "GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0"
 DEFAULT_TASK = "text-generation"
@@ -69,8 +68,6 @@ class GreenBitPipeline(BaseLLM):
     model_kwargs: Dict[str, Any] = Field(default_factory=dict)
     pipeline_kwargs: Dict[str, Any] = Field(default_factory=dict)
     batch_size: int = Field(default=DEFAULT_BATCH_SIZE)
-    conv_template: Optional[Conversation] = Field(default=None)
-    response_format_handler: Optional[ResponseFormatHandler] = Field(default=None)
 
     class Config:
         """Configuration for this pydantic object."""
@@ -101,12 +98,7 @@ class GreenBitPipeline(BaseLLM):
         _model_kwargs = model_kwargs or {"dtype": torch.half, "seqlen": 2048, "device_map": "auto"}
         _pipeline_kwargs = pipeline_kwargs or {"max_tokens": 100, "temp": 0.7}
 
-        conv_template = cls._get_conversation_template(cls, model_id)
-
-        model, tokenizer, _ = load(
-            model_id,
-            **_model_kwargs
-        )
+        model, tokenizer, _ = load(model_id, **_model_kwargs)
 
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -126,9 +118,7 @@ class GreenBitPipeline(BaseLLM):
             task=task,
             model_kwargs=_model_kwargs,
             pipeline_kwargs=_pipeline_kwargs,
-            batch_size=batch_size,
-            conv_template=conv_template,
-            response_format_handler=ResponseFormatHandler(conv_template)
+            batch_size=batch_size
         )
 
     @property
@@ -138,34 +128,8 @@ class GreenBitPipeline(BaseLLM):
             "task": self.task,
             "model_kwargs": self.model_kwargs,
             "pipeline_kwargs": self.pipeline_kwargs,
-            "batch_size": self.batch_size,
-            "conv_template": self.conv_template
+            "batch_size": self.batch_size
         }
-
-    def _get_conversation_template(self, model_id) -> Optional[Conversation]:
-        """Get appropriate conversation template based on model ID"""
-        model_id_lower = model_id.lower()
-
-        if "qwen" in model_id_lower:
-            return get_conv_template("qwen-chat")
-        elif "llama-3" in model_id_lower:
-            return get_conv_template("llama-3")
-        elif "llama-2" in model_id_lower:
-            return get_conv_template("llama-2")
-        elif "mistral" in model_id_lower:
-            return get_conv_template("mistral")
-        elif "yi" in model_id_lower:
-            return get_conv_template("yi-chat")
-        elif "phi-3" in model_id_lower:
-            return get_conv_template("phi-3")
-        elif "gemma" in model_id_lower:
-            return get_conv_template("gemma")
-        elif "tinyllama" in model_id_lower:
-            return get_conv_template("TinyLlama")
-        elif "gemini" in model_id_lower:
-            return get_conv_template("gemini")
-
-        return None
 
     def _prepare_generation_config(self, pipeline_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """prepare generation configuration"""
@@ -183,32 +147,52 @@ class GreenBitPipeline(BaseLLM):
             "num_return_sequences": 1,
         }
 
-        if self.conv_template:
-            if self.conv_template.stop_token_ids:
-                generation_config["stopping_criteria"] = StoppingCriteriaList([
-                    StopOnTokens(self.conv_template.stop_token_ids)
-                ])
-            if self.conv_template.stop_str:
-                generation_config["stopping_criteria"] = StoppingCriteriaList([
-                    StopOnTokens([
-                        self.pipeline.tokenizer.encode(self.conv_template.stop_str)[-1]
-                    ])
-                ])
-
         return generation_config
+
+    def _prepare_prompt_from_text(self, text: str, **kwargs) -> str:
+        """Convert plain text to chat format and apply template"""
+        if not hasattr(self.pipeline.tokenizer, 'apply_chat_template'):
+            # Fallback: return text as-is if no chat template support
+            return text
+
+        try:
+            # Convert text to chat message format
+            messages = [{"role": "user", "content": text}]
+
+            # Prepare template arguments
+            template_kwargs = {"add_generation_prompt": True}
+
+            # Add enable_thinking for Qwen3 models if provided
+            enable_thinking = kwargs.get('enable_thinking')
+            if enable_thinking is not None:
+                template_kwargs["enable_thinking"] = enable_thinking
+
+            return self.pipeline.tokenizer.apply_chat_template(messages, **template_kwargs)
+        except Exception:
+            # If template application fails, return original text
+            return text
 
     @property
     def _llm_type(self) -> str:
         return "greenbit_pipeline"
 
-
-    def _generate(
+    def generate(
             self,
             prompts: List[str],
             stop: Optional[List[str]] = None,
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ) -> LLMResult:
+        # Process prompts through chat template if they're plain text
+        processed_prompts = []
+        for prompt in prompts:
+            # If prompt doesn't look like it's already formatted, apply chat template
+            if not any(marker in prompt for marker in
+                       ['<|im_start|>', '<|start_header_id|>', '[INST]', '<start_of_turn>']):
+                processed_prompts.append(self._prepare_prompt_from_text(prompt, **kwargs))
+            else:
+                processed_prompts.append(prompt)
+
         # Get and merge pipeline kwargs
         pipeline_kwargs = {**self.pipeline_kwargs}
         if "pipeline_kwargs" in kwargs:
@@ -226,8 +210,8 @@ class GreenBitPipeline(BaseLLM):
         hidden_states_list = []
         with_hidden_states = kwargs.get("with_hidden_states", False)
 
-        for i in range(0, len(prompts), self.batch_size):
-            batch_prompts = prompts[i: i + self.batch_size]
+        for i in range(0, len(processed_prompts), self.batch_size):
+            batch_prompts = processed_prompts[i: i + self.batch_size]
 
             inputs = self.pipeline.tokenizer(
                 batch_prompts,
@@ -257,9 +241,8 @@ class GreenBitPipeline(BaseLLM):
                 input_tokens_hs = outputs.hidden_states[0][hidden_layer]
                 # use attention mask
                 mask = inputs["attention_mask"].unsqueeze(2)
-                # input_tokens_hs = input_tokens_hs * mask
                 # calculates mean
-                batch_embeddings = torch.sum(input_tokens_hs*mask, dim=1) / torch.sum(mask, dim=1)
+                batch_embeddings = torch.sum(input_tokens_hs * mask, dim=1) / torch.sum(mask, dim=1)
                 # keep batch dimension when adding to list
                 hidden_states_list.extend([emb.unsqueeze(0).detach() for emb in batch_embeddings])
 
@@ -273,12 +256,8 @@ class GreenBitPipeline(BaseLLM):
                 )
                 generated_texts.append(decoded_text)
 
-            for j, text in enumerate(generated_texts):
-                if kwargs.get("skip_prompt", True):
-                    if self.conv_template:
-                        text = self.response_format_handler.extract_response(text, clean_template=True)
-                    else:
-                        text = text[len(batch_prompts[j]):]
+            # For chat templates, the decoded text is already clean
+            for text in generated_texts:
                 text_generations.append(text.strip())
 
         generations = []
@@ -292,13 +271,18 @@ class GreenBitPipeline(BaseLLM):
         return LLMResult(generations=generations)
 
 
-    def _stream(
+    def stream(
             self,
             prompt: str,
             stop: Optional[List[str]] = None,
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ) -> Iterator[GenerationChunk]:
+        # Process prompt through chat template if it's plain text
+        if not any(marker in prompt for marker in ['<|im_start|>', '<|start_header_id|>', '[INST]', '<start_of_turn>']):
+            processed_prompt = self._prepare_prompt_from_text(prompt, **kwargs)
+        else:
+            processed_prompt = prompt
 
         # Get and merge pipeline kwargs
         pipeline_kwargs = {**self.pipeline_kwargs}
@@ -307,20 +291,13 @@ class GreenBitPipeline(BaseLLM):
 
         generation_config = self._prepare_generation_config(pipeline_kwargs)
 
-        if self.conv_template:
-            conv = self.conv_template.copy()
-            conv.append_message(conv.roles[0], prompt)
-            conv.append_message(conv.roles[1], None)
-            prompt = conv.get_prompt()
-
-
         streamer = TextIteratorStreamer(
             self.pipeline.tokenizer,
             timeout=60.0,
             skip_prompt=kwargs.get("skip_prompt", True),
             skip_special_tokens=True
         )
-        inputs = self.pipeline.tokenizer(prompt, return_tensors="pt").to(self.pipeline.device)
+        inputs = self.pipeline.tokenizer(processed_prompt, return_tensors="pt").to(self.pipeline.device)
 
         generation_kwargs = dict(
             **inputs,

@@ -26,7 +26,8 @@ from green_bit_llm.common.utils import (
     get_model_path,
     find_layers,
     apply_dtype_to,
-    apply_quant_strategy
+    apply_quant_strategy,
+    detect_moe_model_type
 )
 
 from green_bit_llm.common.utils import (
@@ -35,6 +36,10 @@ from green_bit_llm.common.utils import (
     STRATEGY_FILE_JSON_ROOT
 )
 from green_bit_llm.patches.qwen3_moe_patch import apply_qwen3_moe_patch, restore_qwen3_moe_patch
+from green_bit_llm.patches.deepseek_v3_moe_patch import (
+    apply_deepseek_v3_moe_patch,
+    restore_deepseek_v3_moe_patch
+)
 
 from colorama import init, Fore, Style
 init(autoreset=True)
@@ -204,11 +209,29 @@ def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits
     """
     logging.set_verbosity_error()
 
-    # Check if it is a Qwen3 MoE model and apply the patch
-    is_qwen3_moe = hasattr(config, 'model_type') and 'qwen3' in config.model_type.lower() and getattr(config, 'num_experts', 0) > 0
-    if is_qwen3_moe:
-        print(Style.BRIGHT + Fore.CYAN + "Info: Detected Qwen3 MoE model, applying quantization-friendly patch...")
-        apply_qwen3_moe_patch()
+    # Detect MoE model type and apply appropriate patches
+    moe_info = detect_moe_model_type(config)
+    applied_patches = []
+
+    if moe_info['needs_patch']:
+        print(Style.BRIGHT + Fore.CYAN + f"Info: Detected {moe_info['type'].upper()} model")
+        print(f"   Experts: {moe_info['experts_count']}, Shared experts: {moe_info['has_shared_experts']}")
+        print("   Applying quantization-friendly patch...")
+
+        try:
+            if moe_info['type'] == 'qwen3_moe':
+                apply_qwen3_moe_patch()
+                applied_patches.append('qwen3_moe')
+
+            elif moe_info['type'] == 'deepseek_v3_moe':
+                # Use hybrid strategy for DeepSeek V3 due to large number of experts
+                strategy = 'hybrid' if moe_info['experts_count'] > 50 else 'conservative'
+                apply_deepseek_v3_moe_patch(strategy)
+                applied_patches.append('deepseek_v3_moe')
+
+        except Exception as e:
+            print(Style.BRIGHT + Fore.YELLOW + f"Warning: Patch application failed: {e}")
+            print("   Using original implementation, may have compatibility issues")
 
     try:
         start_time = time.time()
@@ -225,10 +248,15 @@ def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits
 
             # Check if this is a large MoE model and warn user about processing time
             total_layers = len(model.model.layers)
-            if strategy and any('moe_expert' in str(v) for v in strategy.values() if isinstance(v, dict)):
-                print(
-                    Style.BRIGHT + Fore.CYAN + f"Info: Detected MoE model with {total_layers} layers. "
-                                               f"This may take longer to process...")
+
+            if moe_info['needs_patch']:
+                processing_note = "This may take longer to process"
+                if moe_info['type'] == 'deepseek_v3_moe':
+                    processing_note += f" (256 experts)"
+                elif moe_info['type'] == 'qwen3_moe':
+                    processing_note += f" ({moe_info['experts_count']} experts per layer)"
+
+                print(Style.BRIGHT + Fore.CYAN + f"Info: {processing_note}...")
 
             # Quantize layers as necessary
             for i, layer in enumerate(model.model.layers):
@@ -240,23 +268,35 @@ def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits
                 # Get strategy for this specific layer block
                 strategy_per_block = strategy.get(f"model.layers.{i}") if strategy else None
 
-                # Log different layer types for debugging
+                # Enhanced logging for MoE layers
                 if strategy_per_block and i < 5:  # Only log first few layers to avoid spam
                     layer_type = "Standard FFN"
-                    if 'moe_expert_gate_proj' in strategy_per_block:
+
+                    if moe_info['type'] == 'qwen3_moe' and 'moe_expert_gate_proj' in strategy_per_block:
                         expert_count = sum(1 for k in layers_to_quantize.keys() if 'experts.' in k and 'gate_proj' in k)
-                        layer_type = f"MoE with {expert_count // 3} experts"  # Divide by 3 because gate/up/down
+                        layer_type = f"Qwen3 MoE with {expert_count // 3} experts"
                         if 'moe_shared_expert_gate_proj' in strategy_per_block:
                             layer_type += " + Shared Expert"
+
+                    elif moe_info['type'] == 'deepseek_v3_moe':
+                        if any('experts.' in k for k in layers_to_quantize.keys()):
+                            expert_count = sum(
+                                1 for k in layers_to_quantize.keys() if 'experts.' in k and 'gate_proj' in k)
+                            layer_type = f"DeepSeek V3 MoE with {expert_count // 3} routed experts"
+                            if any('shared_experts.' in k for k in layers_to_quantize.keys()):
+                                layer_type += " + shared experts"
 
                     print(Style.BRIGHT + Fore.CYAN + f"Info: Layer {i}: {layer_type}")
 
                 make_quant(layer, layers_to_quantize, layer_mode=layer_mode, group_size=group_size, bits=bits, dtype=dtype,
                            quant_strategy=strategy_per_block, model_type=config.model_type, requires_grad=requires_grad)
 
-                # Print progress for large models
-                if (i + 1) % 5 == 0:
-                    print(Style.BRIGHT + Fore.CYAN + f"Info: Quantized {i + 1}/{total_layers} layers")
+                # Progress reporting - more frequent for large MoE models
+                progress_interval = 2 if moe_info['experts_count'] > 100 else 5
+                if (i + 1) % progress_interval == 0:
+                    progress_pct = (i + 1) / total_layers * 100
+                    print(
+                        Style.BRIGHT + Fore.CYAN + f"Info: Quantized {i + 1}/{total_layers} layers ({progress_pct:.1f}%)")
 
         # If we need to bind weights, delete the meta tensor of lm_head
         if config.tie_word_embeddings:
@@ -289,11 +329,20 @@ def load_model(model_path: Path, config: AutoConfig, layer_mode: LayerMode, bits
         print(Style.BRIGHT + Fore.CYAN + f'Info: Total {torch.cuda.memory_allocated() / 1024**3:.2f} GiB VRAM used.')
         print(Style.BRIGHT + Fore.CYAN + f"Info: Loaded the model in {time.time() - start_time:.2f} seconds.")
 
+        # Success message for applied patches
+        if applied_patches:
+            print(Style.BRIGHT + Fore.GREEN + f"Info: Successfully applied patches: {', '.join(applied_patches)}")
+
         return model
     except Exception as e:
-        # If an error occurs, make sure to restore the original state
-        if is_qwen3_moe:
+        # If error occurs, restore all patches
+        print(Style.BRIGHT + Fore.RED + f"Error: Model loading failed: {e}")
+
+        if 'qwen3_moe' in applied_patches:
             restore_qwen3_moe_patch()
+        if 'deepseek_v3_moe' in applied_patches:
+            restore_deepseek_v3_moe_patch()
+
         raise e
 
 def load(

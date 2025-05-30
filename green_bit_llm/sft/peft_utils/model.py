@@ -1,7 +1,8 @@
+import peft.peft_model
 from peft.tuners import lora
 from peft.utils import _get_submodules, PeftType
 
-from .gba_lora import dispatch_gba
+from green_bit_llm.sft.peft_utils.gba_lora import dispatch_gba
 
 
 class GBALoraModel(lora.LoraModel):
@@ -58,5 +59,4 @@ def replace_peft_lora_model_with_gba_lora_model():
     Replaces the existing LoRA model in the PEFT framework with the GBA-enhanced LoRA model.
     This function patches the model mapping in PEFT to use `GBALoraModel` for LoRA configurations.
     """
-    import peft.peft_model
     peft.peft_model.PEFT_TYPE_TO_MODEL_MAPPING[PeftType.LORA] = GBALoraModel

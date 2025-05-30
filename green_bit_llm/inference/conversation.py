@@ -2,7 +2,6 @@
 Conversation prompt templates for cli chat demo.
 code based on: https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py
 """
-
 import base64
 import dataclasses
 from enum import auto, IntEnum
@@ -25,7 +24,6 @@ class SeparatorStyle(IntEnum):
 
 
 IMAGE_PLACEHOLDER_STR = "$$<image>$$"
-
 
 @dataclasses.dataclass
 class Conversation:

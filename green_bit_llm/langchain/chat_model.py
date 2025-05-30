@@ -19,7 +19,6 @@ from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from green_bit_llm.langchain import GreenBitPipeline
-from green_bit_llm.inference.conversation import get_conv_template, Conversation, SeparatorStyle
 
 DEFAULT_SYSTEM_PROMPT = """You are a helpful, respectful, and honest assistant."""
 
@@ -54,7 +53,6 @@ class ChatGreenBit(BaseChatModel):
     """
 
     llm: GreenBitPipeline = Field(..., description="GreenBit Pipeline instance")
-    conv_template: Optional[Conversation] = Field(default=None, description="Conversation template")
 
     class Config:
         """Configuration for this pydantic object."""
@@ -74,9 +72,6 @@ class ChatGreenBit(BaseChatModel):
         # First initialize with mandatory llm field
         super().__init__(llm=llm, **kwargs)
 
-        # Then set the conversation template
-        self.conv_template = llm.conv_template
-
     @property
     def _llm_type(self) -> str:
         return "greenbit-chat"
@@ -94,7 +89,56 @@ class ChatGreenBit(BaseChatModel):
                 generations.append(chat_generation)
         return ChatResult(generations=generations)
 
-    def _generate(
+    def _messages_to_dict(self, messages: List[BaseMessage]) -> List[Dict[str, str]]:
+        """Convert LangChain messages to dictionary format for apply_chat_template"""
+        message_dicts = []
+
+        for message in messages:
+            if isinstance(message, SystemMessage):
+                message_dicts.append({"role": "system", "content": message.content})
+            elif isinstance(message, HumanMessage):
+                message_dicts.append({"role": "user", "content": message.content})
+            elif isinstance(message, AIMessage):
+                message_dicts.append({"role": "assistant", "content": message.content})
+
+        return message_dicts
+
+    def _prepare_prompt(self, messages: List[BaseMessage], **kwargs) -> str:
+        """Prepare prompt using apply_chat_template"""
+        if not hasattr(self.llm.pipeline, 'tokenizer'):
+            raise ValueError("Tokenizer not available in pipeline")
+
+        tokenizer = self.llm.pipeline.tokenizer
+        if not hasattr(tokenizer, 'apply_chat_template'):
+            raise ValueError("Tokenizer does not support apply_chat_template")
+
+        # Convert messages to dict format
+        message_dicts = self._messages_to_dict(messages)
+
+        # Prepare apply_chat_template arguments
+        template_kwargs = {
+            "add_generation_prompt": True,
+        }
+
+        # Add enable_thinking for Qwen3 models if provided
+        enable_thinking = kwargs.get('enable_thinking')
+        if enable_thinking is not None:
+            template_kwargs["enable_thinking"] = enable_thinking
+
+        try:
+            return tokenizer.apply_chat_template(message_dicts, **template_kwargs)
+        except Exception as e:
+            raise ValueError(f"Failed to apply chat template: {str(e)}")
+
+    def _is_qwen3_model(self, model_name: str) -> bool:
+        """check is Qwen3 model"""
+        model_name_lower = model_name.lower()
+        return any([
+            "qwen3-" in model_name_lower,
+            "qwen-3-" in model_name_lower
+        ])
+
+    def generate(
             self,
             messages: List[BaseMessage],
             stop: Optional[List[str]] = None,
@@ -102,31 +146,8 @@ class ChatGreenBit(BaseChatModel):
             **kwargs: Any,
     ) -> ChatResult:
         """Generate chat completion using the underlying pipeline"""
-        if not self.conv_template:
-            raise ValueError("Conversation template is required but not set")
-
-        conv = self.conv_template.copy()
-
-        # Handle system message
-        system_messages = [m for m in messages if isinstance(m, SystemMessage)]
-        if system_messages:
-            conv.system_message = system_messages[0].content
-
-        # Process messages
-        for message in messages:
-            if isinstance(message, SystemMessage):
-                continue
-            if isinstance(message, HumanMessage):
-                conv.append_message(conv.roles[0], message.content)
-            elif isinstance(message, AIMessage):
-                conv.append_message(conv.roles[1], message.content)
-
-        # Ensure assistant's turn
-        if len(conv.messages) == 0 or conv.messages[-1][0] != conv.roles[1]:
-            conv.append_message(conv.roles[1], None)
-
-        # Prepare prompt
-        prompt = conv.get_prompt()
+        # Prepare prompt using apply_chat_template
+        prompt = self._prepare_prompt(messages, **kwargs)
 
         # Handle generation parameters
         generation_kwargs = {}
@@ -139,11 +160,12 @@ class ChatGreenBit(BaseChatModel):
 
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs,
-            "stop": stop or conv.stop_str,
+            "stop": stop,
+            **kwargs
         }
 
         # Generate using pipeline
-        llm_result = self.llm._generate(
+        llm_result = self.llm.generate(
             prompts=[prompt],
             run_manager=run_manager,
             **wrapped_kwargs
@@ -159,26 +181,8 @@ class ChatGreenBit(BaseChatModel):
             **kwargs: Any,
     ):
         """Stream chat completion"""
-        if not self.conv_template:
-            raise ValueError("Conversation template is required but not set")
-
-        conv = self.conv_template.copy()
-
-        # Process messages
-        for message in messages:
-            if isinstance(message, SystemMessage):
-                conv.system_message = message.content
-            elif isinstance(message, HumanMessage):
-                conv.append_message(conv.roles[0], message.content)
-            elif isinstance(message, AIMessage):
-                conv.append_message(conv.roles[1], message.content)
-
-        # Ensure assistant's turn
-        if len(conv.messages) == 0 or conv.messages[-1][0] != conv.roles[1]:
-            conv.append_message(conv.roles[1], None)
-
-        # Prepare prompt
-        prompt = conv.get_prompt()
+        # Prepare prompt using apply_chat_template
+        prompt = self._prepare_prompt(messages, **kwargs)
 
         # Handle generation parameters
         generation_kwargs = {}
@@ -191,12 +195,13 @@ class ChatGreenBit(BaseChatModel):
 
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs,
-            "stop": stop or conv.stop_str,
-            "skip_prompt": kwargs.get("skip_prompt", True)
+            "stop": stop,
+            "skip_prompt": kwargs.get("skip_prompt", True),
+            **kwargs
         }
 
         # Stream using pipeline
-        for chunk in self.llm._stream(
+        for chunk in self.llm.stream(
                 prompt,
                 run_manager=run_manager,
                 **wrapped_kwargs

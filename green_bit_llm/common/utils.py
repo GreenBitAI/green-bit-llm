@@ -11,6 +11,7 @@ from transformers import AutoConfig
 from auto_gptq.nn_modules.qlinear.qlinear_cuda import QuantLinear
 
 from green_bit_llm.common.enum import LayerMode
+from green_bit_llm.patches.deepseek_v3_moe_patch import detect_deepseek_v3_moe_model
 
 STRATEGY_FILE_NAME = "quant_strategy.json"
 MODEL_TYPE_QWEN2 = "qwen2"
@@ -30,7 +31,6 @@ def check_engine_available()-> bool:
         print(f"Error: Module not found: {e}.")
         return False
     return True
-
 
 def match_model_pattern(model_name: str) -> tuple:
     """
@@ -65,7 +65,6 @@ def match_model_pattern(model_name: str) -> tuple:
 
     raise ValueError(f"Invalid or unsupported model name pattern: {model_name}")
 
-
 def check_quantization_config(config: AutoConfig):
     """
     Checks the quantization configuration of the given model configuration.
@@ -89,7 +88,6 @@ def check_quantization_config(config: AutoConfig):
 
     return None, None, None
 
-
 def get_layer_mode(model_name: str, config: AutoConfig) -> tuple:
     """
     Determines the layer mode from the model's config or from the model name and extracts weight bits and group size if present.
@@ -110,7 +108,6 @@ def get_layer_mode(model_name: str, config: AutoConfig) -> tuple:
         return mode, bits, group_size
 
     return match_model_pattern(model_name)
-
 
 def get_packed_info(channels, n_bits, bits_prop, bits_group_size):
     """
@@ -143,8 +140,6 @@ def get_packed_info(channels, n_bits, bits_prop, bits_group_size):
             rows += channel_pre_pack // 32 * n_bits[idx]
     return groups, rows
 
-
-
 def find_layers(module: nn.Module, layers=[nn.Conv2d, nn.Linear, QuantLinear], name=''):
     """
     Recursively searches and returns a dictionary of layers within a given PyTorch model
@@ -169,7 +164,6 @@ def find_layers(module: nn.Module, layers=[nn.Conv2d, nn.Linear, QuantLinear], n
             child, layers=layers, name=name + '.' + name1 if name != '' else name1
         ))
     return res
-
 
 def get_model_path(path_or_hf_repo: str, token=None) -> Path:
     """
@@ -339,3 +333,35 @@ def apply_quant_strategy(name_attr: str, quant_strategy: Dict):
                 pass
 
     return strategy
+
+def detect_moe_model_type(config):
+    """
+    Detect MoE model type and return model information
+    """
+    model_info = {
+        'type': 'standard',
+        'needs_patch': False,
+        'experts_count': 0,
+        'has_shared_experts': False
+    }
+
+    # Check Qwen3 MoE
+    if hasattr(config, 'model_type') and 'qwen3' in config.model_type.lower():
+        if getattr(config, 'num_experts', 0) > 0:
+            model_info.update({
+                'type': 'qwen3_moe',
+                'needs_patch': True,
+                'experts_count': config.num_experts,
+                'has_shared_experts': False
+            })
+
+    # Check DeepSeek V3 MoE
+    elif detect_deepseek_v3_moe_model(config):
+        model_info.update({
+            'type': 'deepseek_v3_moe',
+            'needs_patch': True,
+            'experts_count': getattr(config, 'n_routed_experts', 0),
+            'has_shared_experts': getattr(config, 'n_shared_experts', 0) > 0
+        })
+
+    return model_info

@@ -10,10 +10,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.nn.modules
 import torch
 
 # Add the parent directory to sys.path
-from .utils import str_to_torch_dtype
+from green_bit_llm.inference.utils import str_to_torch_dtype
 
 try:
-    from .chat_base import chat_loop, SimpleChatIO, RichChatIO
+    from green_bit_llm.inference.chat_base import chat_loop, SimpleChatIO, RichChatIO
 except Exception:
     raise Exception("Error occurred when import chat loop, ChatIO classes.")
 

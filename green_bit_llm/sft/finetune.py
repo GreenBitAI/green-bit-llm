@@ -1,11 +1,11 @@
-import argparse
-import sys, os
+import sys
+import os
 
 import torch
 
 from transformers import PreTrainedTokenizer, TrainingArguments
 from datasets import load_dataset
-from .trainer import GbaSFTTrainer
+from green_bit_llm.sft.trainer import GbaSFTTrainer
 
 from green_bit_llm.common import load
 from green_bit_llm.args_parser import setup_shared_arg_parser
@@ -20,9 +20,8 @@ try:
 except ModuleNotFoundError as e:
     raise Exception(f"Error occurred while importing Bitorch Engine module '{str(e)}'.")
 
-from .optim import AdamW8bit
-
-from .utils import str_to_torch_dtype, create_param_groups
+from green_bit_llm.sft.optim import AdamW8bit
+from green_bit_llm.sft.utils import str_to_torch_dtype, create_param_groups
 
 
 # default value for arguments

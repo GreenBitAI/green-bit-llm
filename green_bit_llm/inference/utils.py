@@ -1,6 +1,3 @@
-from pathlib import Path
-import sys
-
 from transformers.generation.logits_process import (
     LogitsProcessorList,
     RepetitionPenaltyLogitsProcessor,
@@ -43,12 +40,10 @@ def is_partial_stop(output: str, stop_str: str):
             return True
     return False
 
-
 def is_sentence_complete(output: str):
     """Check whether the output is a complete sentence."""
     end_symbols = (".", "?", "!", "...", "。", "？", "！", "…", '"', "'", "”")
     return output.endswith(end_symbols)
-
 
 def get_context_length(config):
     """Get the context length of a model from a huggingface model config."""
@@ -67,7 +62,6 @@ def get_context_length(config):
             return int(rope_scaling_factor * val)
     return 2048
 
-
 def get_conversation_template(model_path: str) -> Conversation:
     """Get and return a specific conversation template via checking its model path/model name."""
     for key, value in CONV_TEMP_DICT.items():
@@ -75,7 +69,6 @@ def get_conversation_template(model_path: str) -> Conversation:
         if value in model_path.lower():
             return get_conv_template(key)
     raise Exception("Invalid model path: The provided model is not supported yet.")
-
 
 def prepare_logits_processor(
     temperature: float, repetition_penalty: float, top_p: float, top_k: int
@@ -107,7 +100,6 @@ def prepare_logits_processor(
         processor_list.append(TopKLogitsWarper(top_k))
     return processor_list
 
-
 def str_to_torch_dtype(dtype: str):
     """Get torch dtype via parsing the dtype string."""
     import torch
@@ -122,7 +114,6 @@ def str_to_torch_dtype(dtype: str):
         return torch.bfloat16
     else:
         raise ValueError(f"Unrecognized dtype: {dtype}")
-
 
 def is_chat_model(path):
     """Distinguish if the input model name contains keywords like '-chat-' or '-instrct-'"""

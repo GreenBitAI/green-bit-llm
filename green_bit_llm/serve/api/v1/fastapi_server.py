@@ -7,21 +7,20 @@ import time
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Set
-from dataclasses import dataclass
 
 import torch
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, field_validator, ValidationInfo
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from green_bit_llm.langchain import GreenBitPipeline, ChatGreenBit
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from transformers import AutoTokenizer
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from green_bit_llm.serve.auth import get_api_key_auth, APIKeyAuth
-from starlette.middleware.base import BaseHTTPMiddleware
+# from green_bit_llm.serve.auth import get_api_key_auth, APIKeyAuth
+# from starlette.middleware.base import BaseHTTPMiddleware
 from dotenv import load_dotenv
 
+from green_bit_llm.langchain import GreenBitPipeline, ChatGreenBit
 
 thread_pool = ThreadPoolExecutor()
 
@@ -44,73 +43,22 @@ _confidence_scorers = {}
 
 #====================== Helper classes and methods =====================#
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Middleware to handle concurrent request cleanup."""
-
-    def __init__(self, app, auth_handler: APIKeyAuth):
-        super().__init__(app)
-        self.auth_handler = auth_handler
-
-    async def dispatch(self, request, call_next):
-        api_key = request.headers.get("X-Api-Key")
-
-        try:
-            response = await call_next(request)
-            return response
-        finally:
-            if api_key:
-                await self.auth_handler.rate_limiter.release_concurrent_request(api_key)
-
-
-@dataclass
-class StoppingCriteria:
-    stop_met: bool
-    reason: str
-
-
-def stopping_criteria(tokens: List[int], stop_sequences: List[List[int]], eos_token_id: int) -> StoppingCriteria:
-    """Check if stopping criteria are met."""
-    if not tokens:
-        return StoppingCriteria(False, "")
-
-    # Check for EOS token
-    if tokens[-1] == eos_token_id:
-        return StoppingCriteria(True, "eos_token")
-
-    # Check for stop sequences
-    for stop_seq in stop_sequences:
-        if len(tokens) >= len(stop_seq):
-            if tokens[-len(stop_seq):] == stop_seq:
-                return StoppingCriteria(True, "stop_sequence")
-
-    return StoppingCriteria(False, "")
-
-
-def sequence_overlap(tokens: List[int], stop_sequence: List[int]) -> bool:
-    """Check if the tokens end with a partial stop sequence."""
-    if not tokens or not stop_sequence:
-        return False
-
-    for i in range(1, len(stop_sequence)):
-        if tokens[-i:] == stop_sequence[:i]:
-            return True
-    return False
-
-
-def convert_chat(messages: List[Dict[str, str]]) -> str:
-    """Convert chat messages to a single string format."""
-    formatted_messages = []
-    for msg in messages:
-        role = msg["role"]
-        content = msg["content"]
-        if role == "system":
-            formatted_messages.append(f"System: {content}")
-        elif role == "user":
-            formatted_messages.append(f"User: {content}")
-        elif role == "assistant":
-            formatted_messages.append(f"Assistant: {content}")
-    return "\n".join(formatted_messages) + "\nAssistant:"
-
+# class RateLimitMiddleware(BaseHTTPMiddleware):
+#     """Middleware to handle concurrent request cleanup."""
+#
+#     def __init__(self, app, auth_handler: APIKeyAuth):
+#         super().__init__(app)
+#         self.auth_handler = auth_handler
+#
+#     async def dispatch(self, request, call_next):
+#         api_key = request.headers.get("X-Api-Key")
+#
+#         try:
+#             response = await call_next(request)
+#             return response
+#         finally:
+#             if api_key:
+#                 await self.auth_handler.rate_limiter.release_concurrent_request(api_key)
 
 def convert_model_name_to_url_path(model_name: str) -> str:
     """
@@ -191,7 +139,6 @@ def get_model_key(request_model: str) -> str:
 
     # If no match is found, raise exception
     raise ValueError(f"Error: Unsupported model: {request_model}")
-
 #================ END of helper classes and methods ======================#
 
 def parse_args():
@@ -303,8 +250,6 @@ class ModelProvider:
             # Initialize pipeline
             pipeline = GreenBitPipeline.from_model_id(
                 model_id=model_path,
-                device=self.cli_args.device,
-                tokenizer=tokenizer,
                 model_kwargs={
                     "dtype": torch.half,
                     "device_map": self.cli_args.device_map,
@@ -427,6 +372,7 @@ class ChatCompletionRequest(BaseModel):
     with_hidden_states: bool = False
     remote_score: bool = True
     api_key: str = ""
+    enable_thinking: Optional[bool] = None
 
     @field_validator('messages')
     @classmethod
@@ -567,6 +513,10 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
             "temperature": request.temperature,
             "max_new_tokens": request.max_tokens
         }
+
+        if request.enable_thinking is not None:
+            generation_kwargs["enable_thinking"] = request.enable_thinking
+
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs
         }
@@ -600,8 +550,9 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
             }
             # Add usage info in first chunk
             if is_first_chunk:
-                input_text = chat_model.conv_template.copy().get_prompt()
-                input_tokens = len(tokenizer.encode(input_text))
+                input_tokens = 0
+                for message in messages_list[0]:
+                    input_tokens += len(tokenizer.encode(message.content))
 
                 response["usage"] = {
                     "input_tokens": input_tokens,
@@ -662,7 +613,7 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
         # thread pool
         llm_result = await asyncio.get_event_loop().run_in_executor(
             thread_pool,
-            lambda: chat_model.llm._generate(
+            lambda: chat_model.llm.generate(
                 prompts=prompts,
                 **wrapped_kwargs
             )
@@ -762,7 +713,7 @@ async def generate_completion(request: CompletionRequest, chat_model: ChatGreenB
 
 
 async def generate_chat_completion(request: ChatCompletionRequest, chat_model: ChatGreenBit,
-                                 messages_list: List[List[HumanMessage]]):
+                                 messages_list: List[List[BaseMessage]]):
     created = int(time.time())
     request_id = f"chatcmpl-{uuid.uuid4()}"
 
@@ -773,53 +724,28 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
             "max_new_tokens": request.max_tokens
         }
 
+        if request.enable_thinking is not None:
+            generation_kwargs["enable_thinking"] = request.enable_thinking
+
         # Wrap generation parameters
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs,
             "with_hidden_states": request.with_hidden_states
         }
 
-        conv = chat_model.conv_template
-        if not conv:
-            raise ValueError("Conversation template is required but not set")
-
-        prompts = []
-        for messages in messages_list:
-            conv_instance = conv.copy()
-
-            # Handle system message if present
-            system_messages = [m for m in messages if isinstance(m, SystemMessage)]
-            if system_messages:
-                conv_instance.system_message = system_messages[0].content
-
-            # Process messages
-            for message in messages:
-                if isinstance(message, SystemMessage):
-                    continue
-                elif isinstance(message, HumanMessage):
-                    conv_instance.append_message(conv_instance.roles[0], message.content)
-                elif isinstance(message, AIMessage):
-                    conv_instance.append_message(conv_instance.roles[1], message.content)
-
-            # Ensure assistant's turn
-            if len(conv_instance.messages) == 0 or conv_instance.messages[-1][0] != conv_instance.roles[1]:
-                conv_instance.append_message(conv_instance.roles[1], None)
-
-            prompts.append(conv_instance.get_prompt())
-
         # Generate using thread pool
         llm_result = await asyncio.get_event_loop().run_in_executor(
             thread_pool,
-            lambda: chat_model.llm._generate(
-                prompts=prompts,
+            lambda: chat_model._generate(
+                messages=messages_list[0],  # 取第一个对话
                 **wrapped_kwargs
             )
         )
 
-        # handl results
+        # handle results
         choices = []
-        for idx, generations in enumerate(llm_result.generations):
-            gen_info = generations[0].generation_info or {}
+        for idx, generation in enumerate(llm_result.generations):
+            gen_info = generation.generation_info or {}
             hidden_states = gen_info.get("hidden_states")
             score = None
 
@@ -846,13 +772,13 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
 
             # Let tokenizer determine if max_tokens was reached
             tokenizer = chat_model.llm.pipeline.tokenizer
-            generated_text = generations[0].text
+            generated_text = generation.message.content
             finish_reason = "length" if len(tokenizer.encode(generated_text)) >= request.max_tokens else "stop"
 
             choices.append({
                 "message": {
                     "role": "assistant",
-                    "content": generations[0].text,
+                    "content": generated_text,
                     "hidden_states": hidden_states,
                     "confidence_score": score[idx] if score else None
                 },
@@ -864,13 +790,11 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
             try:
                 tokenizer = chat_model.llm.pipeline.tokenizer
 
-                prompt_tokens = await asyncio.gather(*[
-                    asyncio.get_event_loop().run_in_executor(
-                        thread_pool,
-                        lambda p=p: len(tokenizer.encode(p))
-                    )
-                    for p in prompts
-                ])
+                # input tokens
+                input_tokens = 0
+                for message in messages_list[0]:
+                    input_tokens += len(tokenizer.encode(message.content))
+
                 completion_tokens = await asyncio.gather(*[
                     asyncio.get_event_loop().run_in_executor(
                         thread_pool,
@@ -879,19 +803,19 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
                     for c in choices
                 ])
                 return {
-                    "input_tokens": sum(prompt_tokens),
+                    "input_tokens": input_tokens,
                     "output_tokens": sum(completion_tokens),
-                    "total_tokens": sum(prompt_tokens) + sum(completion_tokens)
+                    "total_tokens": input_tokens + sum(completion_tokens)
                 }
             except Exception as e:
                 logger.warning(f"Error calculating exact token counts: {str(e)}. Using approximate count.")
                 # fall back
-                prompt_tokens = sum(sum(len(msg.content.split()) for msg in msgs) for msgs in messages_list)
+                input_tokens = sum(len(msg.content.split()) for msg in messages_list[0])
                 completion_tokens = sum(len(c["message"]["content"].split()) for c in choices)
                 return {
-                    "input_tokens": prompt_tokens,
+                    "input_tokens": input_tokens,
                     "output_tokens": completion_tokens,
-                    "total_tokens": prompt_tokens + completion_tokens
+                    "total_tokens": input_tokens + completion_tokens
                 }
 
         usage = await calculate_tokens()
@@ -912,7 +836,6 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
         elif isinstance(e, ValueError):
             raise HTTPException(status_code=400, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def create_app(args):
     """Create and configure the FastAPI application with routes."""
@@ -949,9 +872,10 @@ def create_app(args):
     # Update DB path from environment if provided
     db_path = os.getenv("LIBRA_DB_PATH", args.db_file_path)
 
-    # Initialize auth handler
-    auth_handler = APIKeyAuth(db_path)
-    app.add_middleware(RateLimitMiddleware, auth_handler=auth_handler)
+    # We disable user auth for now
+    # # Initialize auth handler
+    # auth_handler = APIKeyAuth(db_path)
+    # app.add_middleware(RateLimitMiddleware, auth_handler=auth_handler)
 
     # Add logging middleware
     @app.middleware("http")
@@ -1004,28 +928,30 @@ def create_app(args):
         @app.post(completion_path)
         async def create_completion(
             request: CompletionRequest,
-            user_info: dict = Depends(get_api_key_auth)
+            # We disable user auth for now
+            # user_info: dict = Depends(get_api_key_auth)
         ):
             try:
-                # Estimate total tokens
-                if isinstance(request.prompt, list):
-                    estimated_tokens = sum(len(p.split()) for p in request.prompt) + request.max_tokens * len(
-                        request.prompt)
-                else:
-                    estimated_tokens = len(request.prompt.split()) + request.max_tokens
-
-                # Check permissions
-                auth_handler.check_permissions(user_info, "completion")
-
-                # Check token limit
-                auth_handler.check_token_limit(user_info, request.max_tokens)
-
-                # Check rate limits with token estimate
-                await auth_handler.check_rate_limits(
-                    request.api_key,
-                    user_info,
-                    estimated_tokens
-                )
+                # We disable user auth for now
+                # # Estimate total tokens
+                # if isinstance(request.prompt, list):
+                #     estimated_tokens = sum(len(p.split()) for p in request.prompt) + request.max_tokens * len(
+                #         request.prompt)
+                # else:
+                #     estimated_tokens = len(request.prompt.split()) + request.max_tokens
+                #
+                # # Check permissions
+                # auth_handler.check_permissions(user_info, "completion")
+                #
+                # # Check token limit
+                # auth_handler.check_token_limit(user_info, request.max_tokens)
+                #
+                # # Check rate limits with token estimate
+                # await auth_handler.check_rate_limits(
+                #     request.api_key,
+                #     user_info,
+                #     estimated_tokens
+                # )
 
                 model_components = model_provider.get_model(model_path)
                 chat_model = model_components['chat_model']
@@ -1045,43 +971,57 @@ def create_app(args):
         @app.post(chat_completion_path)
         async def create_chat_completion(
             request: ChatCompletionRequest,
-            user_info: dict = Depends(get_api_key_auth)
+            # We disable user auth for now
+            # user_info: dict = Depends(get_api_key_auth)
         ):
             try:
-                # Check permissions
-                auth_handler.check_permissions(user_info, "chat")
-
-                # Check token limit
-                auth_handler.check_token_limit(user_info, request.max_tokens)
-
+                # We disable user auth for now
+                # # Check permissions
+                # auth_handler.check_permissions(user_info, "chat")
+                #
+                # # Check token limit
+                # auth_handler.check_token_limit(user_info, request.max_tokens)
+                #
                 # Rough token estimation for chat
-                estimated_tokens = sum(
-                    len(msg["content"].split())
-                    for msg in (request.messages if isinstance(request.messages[0], dict)
-                                else [item for sublist in request.messages for item in sublist])
-                ) + request.max_tokens
-
-                # Check rate limits with token estimate
-                await auth_handler.check_rate_limits(
-                    request.api_key,
-                    user_info,
-                    estimated_tokens
-                )
+                # estimated_tokens = sum(
+                #     len(msg["content"].split())
+                #     for msg in (request.messages if isinstance(request.messages[0], dict)
+                #                 else [item for sublist in request.messages for item in sublist])
+                # ) + request.max_tokens
+                #
+                # # Check rate limits with token estimate
+                # await auth_handler.check_rate_limits(
+                #     request.api_key,
+                #     user_info,
+                #     estimated_tokens
+                # )
 
                 model_components = model_provider.get_model(model_path)
                 chat_model = model_components['chat_model']
 
                 if isinstance(request.messages[0], dict):  # single chat
-                    messages_list = [[HumanMessage(content=msg["content"])
-                                      if msg["role"] == "user"
-                                      else SystemMessage(content=msg["content"])
-                                      for msg in request.messages]]
+                    messages_list = []
+                    langchain_messages = []
+                    for msg in request.messages:
+                        if msg["role"] == "system":
+                            langchain_messages.append(SystemMessage(content=msg["content"]))
+                        elif msg["role"] == "user":
+                            langchain_messages.append(HumanMessage(content=msg["content"]))
+                        elif msg["role"] == "assistant":
+                            langchain_messages.append(AIMessage(content=msg["content"]))
+                    messages_list = [langchain_messages]
                 else:  # batch
-                    messages_list = [[HumanMessage(content=msg["content"])
-                                      if msg["role"] == "user"
-                                      else SystemMessage(content=msg["content"])
-                                      for msg in conversation]
-                                     for conversation in request.messages]
+                    messages_list = []
+                    for conversation in request.messages:
+                        langchain_messages = []
+                        for msg in conversation:
+                            if msg["role"] == "system":
+                                langchain_messages.append(SystemMessage(content=msg["content"]))
+                            elif msg["role"] == "user":
+                                langchain_messages.append(HumanMessage(content=msg["content"]))
+                            elif msg["role"] == "assistant":
+                                langchain_messages.append(AIMessage(content=msg["content"]))
+                        messages_list.append(langchain_messages)
 
                 if request.stream:
                     return StreamingResponse(

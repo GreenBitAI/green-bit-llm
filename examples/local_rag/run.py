@@ -1,4 +1,7 @@
+import re
 import argparse
+import torch
+
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
@@ -7,11 +10,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 
 from green_bit_llm.langchain import GreenBitPipeline, ChatGreenBit, GreenBitEmbeddings
-import torch
-import re
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
+
 
 # Helper function to format documents
 def format_docs(docs):

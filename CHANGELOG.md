@@ -5,10 +5,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
-## [0.2.5] - 2024/10/18
+## [0.2.5] - 2025/5/30
 
 ### Added
 
+- Model server support
+- Deepseek model support
+- Qwen-3 model support
 - Langchain integration
 - local RAG example
 

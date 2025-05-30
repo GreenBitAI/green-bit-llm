@@ -1,5 +1,5 @@
 import torch
-from .libra_router.ue_router import MahalanobisDistanceSeq
+from green_bit_llm.routing.libra_router.ue_router import MahalanobisDistanceSeq
 
 
 class ConfidenceScorer:
