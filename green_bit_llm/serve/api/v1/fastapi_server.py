@@ -433,9 +433,6 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
             "pipeline_kwargs": generation_kwargs
         }
 
-        # Convert string prompt to HumanMessage
-        messages = [HumanMessage(content=request.prompt)]
-
         # Get tokenizer for counting tokens
         tokenizer = chat_model.llm.pipeline.tokenizer
 
@@ -444,9 +441,9 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
         output_tokens = 0
         is_first_chunk = True
 
-        for chunk in chat_model.stream(messages, **wrapped_kwargs):
+        for chunk in chat_model.llm.stream(request.prompt, **wrapped_kwargs):
             # Count tokens in this chunk
-            chunk_tokens = len(tokenizer.encode(chunk.message.content))
+            chunk_tokens = len(tokenizer.encode(chunk.text))
             output_tokens += chunk_tokens
 
             response = {
@@ -456,7 +453,7 @@ async def stream_completion(request: CompletionRequest, chat_model: ChatGreenBit
                 "model": request.model,
                 "choices": [
                     {
-                        "text": chunk.message.content,
+                        "text": chunk.text,
                         "index": 0,
                         "logprobs": None,
                         "finish_reason": None,
@@ -733,18 +730,21 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
             "with_hidden_states": request.with_hidden_states
         }
 
+        prompt = chat_model._prepare_prompt(messages_list[0], **generation_kwargs)
+
         # Generate using thread pool
         llm_result = await asyncio.get_event_loop().run_in_executor(
             thread_pool,
-            lambda: chat_model._generate(
-                messages=messages_list[0],  # 取第一个对话
+            lambda: chat_model.llm.generate(
+                prompts=[prompt],
                 **wrapped_kwargs
             )
         )
 
         # handle results
         choices = []
-        for idx, generation in enumerate(llm_result.generations):
+        for idx, generations in enumerate(llm_result.generations):
+            generation = generations[0]
             gen_info = generation.generation_info or {}
             hidden_states = gen_info.get("hidden_states")
             score = None
@@ -772,7 +772,7 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
 
             # Let tokenizer determine if max_tokens was reached
             tokenizer = chat_model.llm.pipeline.tokenizer
-            generated_text = generation.message.content
+            generated_text = generation.text
             finish_reason = "length" if len(tokenizer.encode(generated_text)) >= request.max_tokens else "stop"
 
             choices.append({
@@ -1087,6 +1087,7 @@ def create_app(args):
     return app, server_config, logger
 
 def main():
+    logger = None
     try:
         import uvicorn
         args = parse_args()
@@ -1094,7 +1095,10 @@ def main():
         logger.info(f"Starting server on {server_config.host}:{server_config.port}")
         uvicorn.run(app, host=server_config.host, port=server_config.port)
     except Exception as e:
-        logger.error(f"Server startup failed: {str(e)}")
+        if logger:
+            logger.error(f"Server startup failed: {str(e)}")
+        else:
+            print(f"Server startup failed: {str(e)}")
         raise
 
 if __name__ == "__main__":

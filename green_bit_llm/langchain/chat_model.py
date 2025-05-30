@@ -118,6 +118,7 @@ class ChatGreenBit(BaseChatModel):
         # Prepare apply_chat_template arguments
         template_kwargs = {
             "add_generation_prompt": True,
+            "tokenize": False,  # 关键：设置为 False 确保返回字符串
         }
 
         # Add enable_thinking for Qwen3 models if provided
@@ -126,17 +127,19 @@ class ChatGreenBit(BaseChatModel):
             template_kwargs["enable_thinking"] = enable_thinking
 
         try:
-            return tokenizer.apply_chat_template(message_dicts, **template_kwargs)
+            result = tokenizer.apply_chat_template(message_dicts, **template_kwargs)
+
+            # 确保返回字符串
+            if isinstance(result, list):
+                # 如果仍然返回 token IDs，解码为字符串
+                return tokenizer.decode(result, skip_special_tokens=False)
+            elif isinstance(result, str):
+                return result
+            else:
+                raise ValueError(f"Unexpected return type from apply_chat_template: {type(result)}")
+
         except Exception as e:
             raise ValueError(f"Failed to apply chat template: {str(e)}")
-
-    def _is_qwen3_model(self, model_name: str) -> bool:
-        """check is Qwen3 model"""
-        model_name_lower = model_name.lower()
-        return any([
-            "qwen3-" in model_name_lower,
-            "qwen-3-" in model_name_lower
-        ])
 
     def generate(
             self,
@@ -172,6 +175,16 @@ class ChatGreenBit(BaseChatModel):
         )
 
         return self._create_chat_result(llm_result)
+
+    def _generate(
+            self,
+            messages: List[BaseMessage],
+            stop: Optional[List[str]] = None,
+            run_manager: Optional[CallbackManagerForLLMRun] = None,
+            **kwargs: Any,
+    ) -> ChatResult:
+        """Generate method required by BaseChatModel"""
+        return self.generate(messages, stop, run_manager, **kwargs)
 
     def stream(
             self,
