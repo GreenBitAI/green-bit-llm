@@ -1,4 +1,6 @@
+import os
 import re
+import json
 from pathlib import Path
 from typing import Dict
 
@@ -366,20 +368,76 @@ def detect_moe_model_type(config):
 
     return model_info
 
-def fix_rope_config(config):
+
+def fix_qwen3_rope_config(config_dict):
     """
-    Fix missing rope_type in RoPE config
+    Fixed the RoPE configuration issue of the Qwen3 model
 
     Args:
-    config: Model config object
+    config_dict: Configuration dictionary
+    Returns:
+    The fixed configuration dictionary
     """
-    if hasattr(config, 'rope_scaling') and config.rope_scaling is not None:
-        if isinstance(config.rope_scaling, dict):
-            # If rope_scaling exists but rope_type is missing, add default value
-            if 'rope_type' not in config.rope_scaling:
-                config.rope_scaling['rope_type'] = 'default'
-                print(f"Warning: Added missing 'rope_type' to rope_scaling config")
+    if 'rope_scaling' in config_dict:
+        rope_scaling = config_dict['rope_scaling']
+
+        if rope_scaling is None:
+            return config_dict
+
+        if isinstance(rope_scaling, dict):
+            # Handling missing rope_type
+            if 'rope_type' not in rope_scaling:
+                if 'type' in rope_scaling:
+                    # If there is a 'type' field, rename it to 'rope_type'
+                    rope_scaling['rope_type'] = rope_scaling.pop('type')
+                else:
+                    # If none, add a default rope_type
+                    rope_scaling['rope_type'] = 'default'
+
+            # Make sure the rope_scaling dictionary is structured correctly
+            config_dict['rope_scaling'] = rope_scaling
         else:
-            # If rope_scaling is not a dictionary, reset it to None
-            config.rope_scaling = None
-            print(f"Warning: Reset invalid rope_scaling config to None")
+            # If rope_scaling is not a dictionary, set it to None
+            config_dict['rope_scaling'] = None
+
+    return config_dict
+
+
+def load_config_with_rope_fix(model_path):
+    """
+    Safely load configurations and automatically fix RoPE configuration issues
+    """
+    try:
+        # Try to load normally first
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+        return config
+    except KeyError as e:
+        if "rope_scaling" in str(e) and "rope_type" in str(e):
+            print(f"RoPE configuration problem detected, trying to repair...")
+
+            # Read and repair the configuration file
+            config_path = os.path.join(model_path, "config.json")
+            if not os.path.exists(config_path):
+                raise FileNotFoundError(f"Configuration file does not exist: {config_path}")
+
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_dict = json.load(f)
+
+            # Fix RoPE configuration
+            config_dict = fix_qwen3_rope_config(config_dict)
+
+            # Create a config from the fixed dictionary
+            from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+            model_type = config_dict.get('model_type', 'qwen3')
+
+            if model_type in CONFIG_MAPPING:
+                config_class = CONFIG_MAPPING[model_type]
+                config = config_class.from_dict(config_dict)
+            else:
+                # If the model type is not in the mapping, try the generic method
+                config = AutoConfig.from_dict(config_dict)
+
+            print(f"Successfully repaired RoPE configuration")
+            return config
+        else:
+            raise e
