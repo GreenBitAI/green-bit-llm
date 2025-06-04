@@ -212,9 +212,10 @@ def main(args):
 
     # Building configs
     tokenizer_config = {"trust_remote_code": True if args.trust_remote_code else None}
+
     pretrain_model_config = {
         "trust_remote_code": True if args.trust_remote_code else None,
-        "use_flash_attention_2": True if args.use_flash_attention_2 else None
+        "attn_implementation": "flash_attention_2" if args.use_flash_attention_2 else None
     }
 
     if args.eos_token is not None:
