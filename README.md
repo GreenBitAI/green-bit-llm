@@ -72,6 +72,12 @@ cd green-bit-llm
 pip install -r requirements.txt
 ```
 
+**Note: For Qwen3 model support, you need to install the development version of transformers:**
+```bash
+pip install git+https://github.com/huggingface/transformers.git
+```
+This installs transformers version 4.53.0.dev0 which includes the necessary Qwen3 model support.
+
 5. Install [Flash Attention](https://github.com/Dao-AILab/flash-attention) (`flash-attn`) according to their [official instructions](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features).
 ```bash
 pip install flash-attn --no-build-isolation
