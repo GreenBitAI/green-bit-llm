@@ -365,3 +365,21 @@ def detect_moe_model_type(config):
         })
 
     return model_info
+
+def fix_rope_config(config):
+    """
+    Fix missing rope_type in RoPE config
+
+    Args:
+    config: Model config object
+    """
+    if hasattr(config, 'rope_scaling') and config.rope_scaling is not None:
+        if isinstance(config.rope_scaling, dict):
+            # If rope_scaling exists but rope_type is missing, add default value
+            if 'rope_type' not in config.rope_scaling:
+                config.rope_scaling['rope_type'] = 'default'
+                print(f"Warning: Added missing 'rope_type' to rope_scaling config")
+        else:
+            # If rope_scaling is not a dictionary, reset it to None
+            config.rope_scaling = None
+            print(f"Warning: Reset invalid rope_scaling config to None")
