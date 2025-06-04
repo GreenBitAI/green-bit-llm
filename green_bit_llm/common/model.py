@@ -27,7 +27,8 @@ from green_bit_llm.common.utils import (
     find_layers,
     apply_dtype_to,
     apply_quant_strategy,
-    detect_moe_model_type
+    detect_moe_model_type,
+    load_config_with_rope_fix
 )
 
 from green_bit_llm.common.utils import (
@@ -379,7 +380,9 @@ def load(
         raise Exception("Error: Bitorch Engine layers are not available.")
 
     model_path = get_model_path(path_or_hf_repo)
-    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+
+    # NOTE: fix RoPE type missing problem in deepseek-r1-qwen3-8B model.
+    config = load_config_with_rope_fix(model_path)
 
     layer_mode, bits, group_size = get_layer_mode(path_or_hf_repo, config)
 

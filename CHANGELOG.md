@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [0.2.6] - 2025/6/4
+
+### Updated
+
+- Fixed RoPE type missing problem in deepseek-r1-qwen3-8B model
+- Update README with Qwen3 model notes and Transformers compatibility details
 
 ## [0.2.5] - 2025/5/30
 
