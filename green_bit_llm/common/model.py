@@ -514,7 +514,8 @@ def generate(
 
     if verbose:
         gen_duration = time.perf_counter() - tic
-        gen_tps = max_tokens / gen_duration if gen_duration > 0 else 0
+        num_generated_tokens = len(tokenizer.encode(generated_sequence))
+        gen_tps = num_generated_tokens / gen_duration
         print(f"\ngeneration: {gen_tps:.2f} token/s")
 
     return generated_sequence
