@@ -60,37 +60,6 @@ _confidence_scorers = {}
 #             if api_key:
 #                 await self.auth_handler.rate_limiter.release_concurrent_request(api_key)
 
-def convert_model_name_to_url_path(model_name: str) -> str:
-    """
-    Convert a model name to a URL-safe path segment.
-    Examples:
-        "GreenBitAI/Llama-3-8B-instruct-layer-mix-bpw-4.0-mlx" ->
-        "GreenBitAI-Llama-3-8B-instruct-layer-mix-bpw-4.0-mlx"
-    """
-    # Replace forward slashes with dashes
-    url_safe_name = model_name.replace("/", "-")
-
-    # Remove any special characters that might cause issues in URLs
-    # Keep alphanumeric characters, dashes, and underscores
-    url_safe_name = "".join(c for c in url_safe_name
-                            if c.isalnum() or c in "-_")
-
-    # Remove any repeated dashes
-    while "--" in url_safe_name:
-        url_safe_name = url_safe_name.replace("--", "-")
-
-    # Remove leading or trailing dashes
-    url_safe_name = url_safe_name.strip("-")
-
-    return url_safe_name
-
-
-def get_model_endpoint_path(model_name: str, endpoint_type: str) -> str:
-    """Generate the full API endpoint path for a given model and endpoint type."""
-    safe_name = convert_model_name_to_url_path(model_name)
-    return f"/v1/{safe_name}/{endpoint_type}"
-
-
 def setup_logging():
     """Configure logging for the FastAPI server."""
     if not os.path.exists(LOG_DIR):
@@ -916,150 +885,129 @@ def create_app(args):
     # Initialize model provider
     model_provider = ModelProvider(server_config.model_config)
 
-    # Helper function to create endpoints for a specific model
-    def create_model_endpoints(model_path: str):
-        completion_path = get_model_endpoint_path(model_path, "completions")
-        chat_completion_path = get_model_endpoint_path(model_path, "chat/completions")
+    # 添加模型验证函数
+    def validate_and_get_model_path(model_name: str) -> str:
+        """Validate if the requested model is available and return its path."""
+        if model_name not in server_config.models_to_serve:
+            available_models = list(server_config.models_to_serve)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{model_name}' not found. Available models: {available_models}"
+            )
+        return model_name
 
-        logger.info(f"Creating endpoints for model {model_path}:")
-        logger.info(f"  - Completion endpoint: {completion_path}")
-        logger.info(f"  - Chat completion endpoint: {chat_completion_path}")
-
-        @app.post(completion_path)
-        async def create_completion(
+    # 统一的completions端点
+    @app.post("/v1/completions")
+    async def create_completion(
             request: CompletionRequest,
             # We disable user auth for now
             # user_info: dict = Depends(get_api_key_auth)
-        ):
-            try:
-                # We disable user auth for now
-                # # Estimate total tokens
-                # if isinstance(request.prompt, list):
-                #     estimated_tokens = sum(len(p.split()) for p in request.prompt) + request.max_tokens * len(
-                #         request.prompt)
-                # else:
-                #     estimated_tokens = len(request.prompt.split()) + request.max_tokens
-                #
-                # # Check permissions
-                # auth_handler.check_permissions(user_info, "completion")
-                #
-                # # Check token limit
-                # auth_handler.check_token_limit(user_info, request.max_tokens)
-                #
-                # # Check rate limits with token estimate
-                # await auth_handler.check_rate_limits(
-                #     request.api_key,
-                #     user_info,
-                #     estimated_tokens
-                # )
+    ):
+        try:
+            # 验证并获取模型路径
+            model_path = validate_and_get_model_path(request.model)
 
-                model_components = model_provider.get_model(model_path)
-                chat_model = model_components['chat_model']
+            model_components = model_provider.get_model(model_path)
+            chat_model = model_components['chat_model']
 
-                if request.stream:
-                    return StreamingResponse(
-                        stream_completion(request, chat_model),
-                        media_type="text/event-stream"
-                    )
-                else:
-                    result = await generate_completion(request, chat_model)
-                    return JSONResponse(result)
-            except Exception as e:
-                logger.error(f"Completion request failed for {model_path}: {str(e)}")
-                raise HTTPException(status_code=500, detail=str(e))
+            if request.stream:
+                return StreamingResponse(
+                    stream_completion(request, chat_model),
+                    media_type="text/event-stream"
+                )
+            else:
+                result = await generate_completion(request, chat_model)
+                return JSONResponse(result)
+        except Exception as e:
+            logger.error(f"Completion request failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
 
-        @app.post(chat_completion_path)
-        async def create_chat_completion(
+    # 统一的chat completions端点
+    @app.post("/v1/chat/completions")
+    async def create_chat_completion(
             request: ChatCompletionRequest,
             # We disable user auth for now
             # user_info: dict = Depends(get_api_key_auth)
-        ):
-            try:
-                # We disable user auth for now
-                # # Check permissions
-                # auth_handler.check_permissions(user_info, "chat")
-                #
-                # # Check token limit
-                # auth_handler.check_token_limit(user_info, request.max_tokens)
-                #
-                # Rough token estimation for chat
-                # estimated_tokens = sum(
-                #     len(msg["content"].split())
-                #     for msg in (request.messages if isinstance(request.messages[0], dict)
-                #                 else [item for sublist in request.messages for item in sublist])
-                # ) + request.max_tokens
-                #
-                # # Check rate limits with token estimate
-                # await auth_handler.check_rate_limits(
-                #     request.api_key,
-                #     user_info,
-                #     estimated_tokens
-                # )
+    ):
+        try:
+            # 验证并获取模型路径
+            model_path = validate_and_get_model_path(request.model)
 
-                model_components = model_provider.get_model(model_path)
-                chat_model = model_components['chat_model']
+            model_components = model_provider.get_model(model_path)
+            chat_model = model_components['chat_model']
 
-                if isinstance(request.messages[0], dict):  # single chat
-                    messages_list = []
+            if isinstance(request.messages[0], dict):  # single chat
+                messages_list = []
+                langchain_messages = []
+                for msg in request.messages:
+                    if msg["role"] == "system":
+                        langchain_messages.append(SystemMessage(content=msg["content"]))
+                    elif msg["role"] == "user":
+                        langchain_messages.append(HumanMessage(content=msg["content"]))
+                    elif msg["role"] == "assistant":
+                        langchain_messages.append(AIMessage(content=msg["content"]))
+                messages_list = [langchain_messages]
+            else:  # batch
+                messages_list = []
+                for conversation in request.messages:
                     langchain_messages = []
-                    for msg in request.messages:
+                    for msg in conversation:
                         if msg["role"] == "system":
                             langchain_messages.append(SystemMessage(content=msg["content"]))
                         elif msg["role"] == "user":
                             langchain_messages.append(HumanMessage(content=msg["content"]))
                         elif msg["role"] == "assistant":
                             langchain_messages.append(AIMessage(content=msg["content"]))
-                    messages_list = [langchain_messages]
-                else:  # batch
-                    messages_list = []
-                    for conversation in request.messages:
-                        langchain_messages = []
-                        for msg in conversation:
-                            if msg["role"] == "system":
-                                langchain_messages.append(SystemMessage(content=msg["content"]))
-                            elif msg["role"] == "user":
-                                langchain_messages.append(HumanMessage(content=msg["content"]))
-                            elif msg["role"] == "assistant":
-                                langchain_messages.append(AIMessage(content=msg["content"]))
-                        messages_list.append(langchain_messages)
+                    messages_list.append(langchain_messages)
 
-                if request.stream:
-                    return StreamingResponse(
-                        stream_chat_completion(request, chat_model, messages_list),
-                        media_type="text/event-stream"
-                    )
-                else:
-                    result = await generate_chat_completion(request, chat_model, messages_list)
-                    return JSONResponse(result)
-            except Exception as e:
-                logger.error(f"Chat completion request failed for {model_path}: {str(e)}")
-                raise HTTPException(status_code=500, detail=str(e))
-
-    # Create endpoints for each model
-    for model_path in server_config.models_to_serve:
-        create_model_endpoints(model_path)
+            if request.stream:
+                return StreamingResponse(
+                    stream_chat_completion(request, chat_model, messages_list),
+                    media_type="text/event-stream"
+                )
+            else:
+                result = await generate_chat_completion(request, chat_model, messages_list)
+                return JSONResponse(result)
+        except Exception as e:
+            logger.error(f"Chat completion request failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     # Add root endpoint for API information
     @app.get("/")
     async def root():
         try:
-            models = list(server_config.models_to_serve)
-            endpoints = []
-
-            for model in models:
-                endpoints.extend([
-                    get_model_endpoint_path(model, "completions"),
-                    get_model_endpoint_path(model, "chat/completions")
-                ])
-
             return {
                 "api": "GreenBit API",
                 "version": "1.0",
-                "models": models,
-                "endpoints": endpoints
+                "models": list(server_config.models_to_serve),
+                "endpoints": [
+                    "/v1/completions",
+                    "/v1/chat/completions"
+                ]
             }
         except Exception as e:
             logger.error(f"Root endpoint request failed: {str(e)}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+    @app.get("/v1/models")
+    async def list_models():
+        """List available models in OpenAI API format."""
+        try:
+            models = []
+            for model_name in server_config.models_to_serve:
+                models.append({
+                    "id": model_name,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "greenbit"
+                })
+
+            return {
+                "object": "list",
+                "data": models
+            }
+        except Exception as e:
+            logger.error(f"Models list request failed: {str(e)}")
             raise HTTPException(status_code=500, detail="Internal server error")
 
     @app.get("/health")

@@ -18,3 +18,4 @@ fastapi
 uvicorn
 peewee
 python-dotenv
+protobuf
