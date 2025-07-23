@@ -149,38 +149,6 @@ class GreenBitPipeline(BaseLLM):
 
         return generation_config
 
-    def _prepare_prompt_from_text(self, text: str, **kwargs) -> str:
-        """Convert plain text to chat format and apply template"""
-        if not hasattr(self.pipeline.tokenizer, 'apply_chat_template'):
-            # Fallback: return text as-is if no chat template support
-            return text
-
-        try:
-            # Convert text to chat message format
-            messages = [{"role": "user", "content": text}]
-
-            # Prepare template arguments
-            template_kwargs = {
-                "add_generation_prompt": True,
-                "tokenize": False,  # 添加这行，确保返回字符串
-            }
-
-            # Add enable_thinking for Qwen3 models if provided
-            enable_thinking = kwargs.get('enable_thinking')
-            if enable_thinking is not None:
-                template_kwargs["enable_thinking"] = enable_thinking
-
-            result = self.pipeline.tokenizer.apply_chat_template(messages, **template_kwargs)
-
-            # 确保返回字符串
-            if isinstance(result, list):
-                return self.pipeline.tokenizer.decode(result, skip_special_tokens=False)
-            return result
-
-        except Exception:
-            # If template application fails, return original text
-            return text
-
     @property
     def _llm_type(self) -> str:
         return "greenbit_pipeline"
@@ -192,15 +160,6 @@ class GreenBitPipeline(BaseLLM):
             run_manager: Optional[CallbackManagerForLLMRun] = None,
             **kwargs: Any,
     ) -> LLMResult:
-        # Process prompts through chat template if they're plain text
-        processed_prompts = []
-        for prompt in prompts:
-            # If prompt doesn't look like it's already formatted, apply chat template
-            if not any(marker in prompt for marker in
-                       ['<|im_start|>', '<|start_header_id|>', '[INST]', '<start_of_turn>']):
-                processed_prompts.append(self._prepare_prompt_from_text(prompt, **kwargs))
-            else:
-                processed_prompts.append(prompt)
 
         # Get and merge pipeline kwargs
         pipeline_kwargs = {**self.pipeline_kwargs}
@@ -219,8 +178,8 @@ class GreenBitPipeline(BaseLLM):
         hidden_states_list = []
         with_hidden_states = kwargs.get("with_hidden_states", False)
 
-        for i in range(0, len(processed_prompts), self.batch_size):
-            batch_prompts = processed_prompts[i: i + self.batch_size]
+        for i in range(0, len(prompts), self.batch_size):
+            batch_prompts = prompts[i: i + self.batch_size]
 
             inputs = self.pipeline.tokenizer(
                 batch_prompts,
@@ -297,10 +256,6 @@ class GreenBitPipeline(BaseLLM):
             **kwargs: Any,
     ) -> Iterator[GenerationChunk]:
         # Process prompt through chat template if it's plain text
-        if not any(marker in prompt for marker in ['<|im_start|>', '<|start_header_id|>', '[INST]', '<start_of_turn>']):
-            processed_prompt = self._prepare_prompt_from_text(prompt, **kwargs)
-        else:
-            processed_prompt = prompt
 
         # Get and merge pipeline kwargs
         pipeline_kwargs = {**self.pipeline_kwargs}
@@ -315,7 +270,7 @@ class GreenBitPipeline(BaseLLM):
             skip_prompt=kwargs.get("skip_prompt", True),
             skip_special_tokens=True
         )
-        inputs = self.pipeline.tokenizer(processed_prompt, return_tensors="pt").to(self.pipeline.device)
+        inputs = self.pipeline.tokenizer(prompt, return_tensors="pt").to(self.pipeline.device)
 
         generation_kwargs = dict(
             **inputs,

@@ -480,11 +480,9 @@ async def stream_chat_completion(request: ChatCompletionRequest, chat_model: Cha
             "max_new_tokens": request.max_tokens
         }
 
-        if request.enable_thinking is not None:
-            generation_kwargs["enable_thinking"] = request.enable_thinking
-
         wrapped_kwargs = {
-            "pipeline_kwargs": generation_kwargs
+            "pipeline_kwargs": generation_kwargs,
+            "enable_thinking": request.enable_thinking if request.enable_thinking is not None else None
         }
 
         # Get tokenizer for counting tokens
@@ -690,13 +688,11 @@ async def generate_chat_completion(request: ChatCompletionRequest, chat_model: C
             "max_new_tokens": request.max_tokens
         }
 
-        if request.enable_thinking is not None:
-            generation_kwargs["enable_thinking"] = request.enable_thinking
-
         # Wrap generation parameters
         wrapped_kwargs = {
             "pipeline_kwargs": generation_kwargs,
-            "with_hidden_states": request.with_hidden_states
+            "with_hidden_states": request.with_hidden_states,
+            "enable_thinking": request.enable_thinking if request.enable_thinking is not None else None
         }
 
         prompt = chat_model._prepare_prompt(messages_list[0], **generation_kwargs)
